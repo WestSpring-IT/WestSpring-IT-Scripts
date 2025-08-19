@@ -2,15 +2,19 @@
 Function check_admin_privileges {
     $CurrentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $CurrentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-        $ElevatedProcess = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
-        $ElevatedProcess.Arguments = "& '" + $MyInvocation.MyCommand.Path + "'"
-        $ElevatedProcess.Verb = "runas"
-        [System.Diagnostics.Process]::Start($ElevatedProcess)
+        if ($MyInvocation.MyCommand.Path) {
+            $ElevatedProcess = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
+            $ElevatedProcess.Arguments = "& '" + $MyInvocation.MyCommand.Path + "'"
+            $ElevatedProcess.Verb = "runas"
+            [System.Diagnostics.Process]::Start($ElevatedProcess)
+        } else {
+            Write-Host "Cannot self-elevate: script path not found. Please run this script from a .ps1 file." -ForegroundColor Red
+        }
         Exit
     }
     write_log_message "Script is running with Administrator privileges!" -ForegroundColor Green
 }
-#check_admin_privileges
+check_admin_privileges
 
 function write_log_message {
     param(
@@ -49,12 +53,14 @@ Function ensure_exchange_connection {
     try {
         # Check if already connected
         $connectionState = Get-ConnectionInformation | Select-Object -ExpandProperty State -ErrorAction SilentlyContinue
+        $defaultDomain = (Get-AcceptedDomain | ? {$_.Default -eq $true}).DomainName
         if ($connectionState -ne "Connected") {
             write_log_message "Connecting to Exchange Online..." -level "Info" -writeToConsole $true
             Connect-ExchangeOnline -ErrorAction Stop
             write_log_message "Connected to Exchange Online successfully." -level "Success" -writeToConsole $true
         } else {
             write_log_message "Already connected to Exchange Online." -level "Info" -writeToConsole $true
+            write_log_message "Connected tenant: $defaultDomain" -level "Info" -writeToConsole $true
         }
     } catch {
         write_log_message "Failed to connect to Exchange Online. Please check your credentials and network." -level "Error" -writeToConsole $true
@@ -70,6 +76,7 @@ Function load_required_modules {
             write_log_message "ExchangeOnlineManagement module not found. Attempting to install..." -level "Warning" -writeToConsole $true
             Install-Module -Name ExchangeOnlineManagement -Force -ErrorAction Stop
         }
+        write_log_message "ExchangeOnlineManagement module found." -level "Info" -writeToConsole $true
         Import-Module ExchangeOnlineManagement -ErrorAction Stop
         write_log_message "ExchangeOnlineManagement module loaded successfully." -level "Success" -writeToConsole $true
 
