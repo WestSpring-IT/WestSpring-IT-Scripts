@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-16" standalone="yes"?>
+<rules name="TransportVersioned">
+  <rule name="Phished - Bypass Spam Filter" id="d5a6b50d-61b7-4e22-b3aa-59a225eb02ff" format="cmdlet">
+    <version requiredMinVersion="15.0.3.0">
+      <commandBlock><![CDATA[New-TransportRule -Name 'Phished - Bypass Spam Filter' -Mode Enforce -HeaderContainsMessageHeader 'X-PHISHTEST' -HeaderContainsWords *ClientSecurityHeader* -SetSCL -1 -SetHeaderName '"X-MS-Exchange-Organization-BypassClutter' -SetHeaderValue 'True']]></commandBlock>
+    </version>
+  </rule>
+  <rule name="Phished - Bypass Junk Folder" id="e7361e34-bfcf-4867-9698-4c2eb20b593d" format="cmdlet">
+    <version requiredMinVersion="15.0.3.0">
+      <commandBlock><![CDATA[New-TransportRule -Name 'Phished - Bypass Junk Folder' -Mode Enforce -HeaderContainsMessageHeader 'X-PHISHTEST' -HeaderContainsWords *ClientSecurityHeader* -SetHeaderName 'X-Forefront-Antispam-Report' -SetHeaderValue 'SFV: SKI;']]></commandBlock>
+    </version>
+  </rule>
+  <rule name="Phished - ATP Attachments bypass" id="4624e5b6-247a-4d64-97aa-91c44a399738" format="cmdlet">
+    <version requiredMinVersion="15.0.3.0">
+      <commandBlock><![CDATA[New-TransportRule -Name 'Phished - ATP Attachments bypass' -Mode Enforce -HeaderContainsMessageHeader 'X-PHISHTEST' -HeaderContainsWords *ClientSecurityHeader* -SetHeaderName 'X-MS-Exchange-Organization-SkipSafeAttachmentProcessing' -SetHeaderValue '1']]></commandBlock>
+    </version>
+  </rule>
+  <rule name="Phished - ATP Safe Links bypass spam filter" id="343c9f9b-d186-453b-b877-64a6acc247c8" format="cmdlet">
+    <version requiredMinVersion="15.0.3.0">
+      <commandBlock><![CDATA[New-TransportRule -Name 'Phished - ATP Safe Links bypass spam filter' -Mode Enforce -HeaderContainsMessageHeader 'X-PHISHTEST' -HeaderContainsWords *ClientSecurityHeader* -SetSCL -1 -SetHeaderName 'X-MS-Exchange-Organization-SkipSafeLinksProcessing' -SetHeaderValue '1']]></commandBlock>
+    </version>
+  </rule>
+</rules>
