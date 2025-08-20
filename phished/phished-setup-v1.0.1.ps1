@@ -1,20 +1,19 @@
-﻿# Ensure the script runs with elevated privileges
-Function check_admin_privileges {
-    $CurrentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
-    if (-not $CurrentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-        if ($MyInvocation.MyCommand.Path) {
-            $ElevatedProcess = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
-            $ElevatedProcess.Arguments = "& '" + $MyInvocation.MyCommand.Path + "'"
-            $ElevatedProcess.Verb = "runas"
-            [System.Diagnostics.Process]::Start($ElevatedProcess)
-        } else {
-            Write-Host "Cannot self-elevate: script path not found. Please run this script from a .ps1 file." -ForegroundColor Red
-        }
-        Exit
-    }
-    write_log_message "Script is running with Administrator privileges!" -ForegroundColor Green
-}
-check_admin_privileges
+﻿<#
+.SYNOPSIS
+[Add a brief summary of what the code does.]
+
+.DESCRIPTION
+[Provide a detailed description of the code's functionality, including any important details or considerations.]
+
+.PARAMETER [ParameterName]
+[Describe each parameter, its purpose, and expected input.]
+
+.EXAMPLE
+[Provide an example of how to use the code.]
+
+.NOTES
+[Include any additional notes, such as author, date, or references.]
+#>
 
 function write_log_message {
     param(
@@ -43,6 +42,27 @@ function write_log_message {
     $logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
     Add-Content -Path $logFilePath -Value $logEntry
 }
+
+# Ensure the script runs with elevated privileges
+Function check_admin_privileges {
+    $CurrentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
+    if (-not $CurrentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
+        if ($MyInvocation.MyCommand.Path) {
+            # write_log_message -message "Script path: '$($MyInvocation.MyCommand.Path)'" -level "Info" -writeToConsole $true
+            $ElevatedProcess = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
+            $ElevatedProcess.Arguments = "& '" + $MyInvocation.MyCommand.Path + "'"
+            $ElevatedProcess.Verb = "runas"
+            [System.Diagnostics.Process]::Start($ElevatedProcess)
+        } else {
+            Write-Host "Cannot self-elevate: script path not found. Please run this script from a .ps1 file." -ForegroundColor Red
+        }
+        Exit
+    }
+    write_log_message "Script is running with Administrator privileges!" -level "Success" -writeToConsole $true
+}
+check_admin_privileges
+
+
 # Script version
 $scriptversion = "V1.0.1"
 write_log_message "Phished - Synchronisation Tool $scriptversion `n
@@ -53,7 +73,7 @@ Function ensure_exchange_connection {
     try {
         # Check if already connected
         $connectionState = Get-ConnectionInformation | Select-Object -ExpandProperty State -ErrorAction SilentlyContinue
-        $defaultDomain = (Get-AcceptedDomain | ? {$_.Default -eq $true}).DomainName
+        $defaultDomain = (Get-AcceptedDomain | Where-Object {$_.Default -eq $true}).DomainName
         if ($connectionState -ne "Connected") {
             write_log_message "Connecting to Exchange Online..." -level "Info" -writeToConsole $true
             Connect-ExchangeOnline -ErrorAction Stop
@@ -90,7 +110,7 @@ Function load_required_modules {
             @{ Name = "Get-MailFlowRules"; Description = "Mail flow cmdlet" }
         ) | ForEach-Object {
             if (-not (Get-Command -Name $_.Name -ErrorAction SilentlyContinue)) {
-                write_log_message "$($_.Description) ($($_.Name)) is not available. Please ensure you have the necessary permissions." -ForegroundColor Yellow
+                write_log_message "$($_.Description) ($($_.Name)) is not available. Please ensure you have the necessary permissions." -level "Warning" -writeToConsole $true
             } else {
                 write_log_message "$($_.Description) ($($_.Name)) is available." -level "Info" -writeToConsole $true
             }
@@ -129,7 +149,7 @@ Function validate_phished_configuration {
 }
 
 # Add required domains and IPs
-Function condfigure_phished_domains_and_ips {
+Function configure_phished_domains_and_ips {
     # Define IPs and domains as arrays
     $phishedIPs= @("143.55.236.227", "143.55.236.228", "143.55.236.247", "34.140.69.192", "34.22.133.124")
     $phishedDomains = @("psr.phished.io", "phished.io")
@@ -155,9 +175,7 @@ Function condfigure_phished_domains_and_ips {
 }
 
 # Create transport rules
-# Create transport rules
 Function create_transport_rules {
-    # Use the global security header if it exists
     if (-not $Global:CustomerSecurityHeader) {
         $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
     }
@@ -223,7 +241,6 @@ Function update_transport_rules_security_header {
 }
 
 # Create a new Phished customer via Partner API
-# Create a new Phished customer via Partner API
 Function create_phished_customer {
     $username = Read-Host "Enter your Partner API username"
     $apiToken = Read-Host "Enter your Partner API token"
@@ -262,7 +279,7 @@ Function create_phished_customer {
         write_log_message "Fetching client ID for $clientName..." -level "Info" -writeToConsole $true
 
         $clients = Invoke-RestMethod -Uri "https://partners.phished.io/api/clients" -Method GET -Headers @{ Authorization = "Bearer $authToken" }
-        $clientId = ($clients | Where-Object { $_.Name -eq $clientName }).Id
+        $clientId = ($clients | Where-Object { $_.name -eq $clientName }).id
 
         if ($clientId) {
             write_log_message "Client ID retrieved: $clientId" -level "Success" -writeToConsole $true
@@ -293,22 +310,27 @@ Function create_phished_customer {
 
                 if ($addedDomain -and $addedDomain.email_header) {
                     $emailHeader = $addedDomain.email_header
-                    write_log_message "Email Header retrieved: $emailHeader" -level "Success" -writeToConsole $true
-                    $Global:CustomerSecurityHeader = $emailHeader
-                    write_log_message "Customer Security Header set to: $Global:CustomerSecurityHeader" -level "Info" -writeToConsole $true
+                    if ($null -ne $emailHeader -and $emailHeader -ne "") {
+                        write_log_message "Email Header retrieved: $emailHeader" -level "Success" -writeToConsole $true
+                        $Global:CustomerSecurityHeader = $emailHeader
+                        write_log_message "Customer Security Header set to: $Global:CustomerSecurityHeader" -level "Info" -writeToConsole $true
+                    } else {
+                        write_log_message "Email Header not found. Please enter it manually." -level "Warning" -writeToConsole $true
+                        $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
+                    }
                 } else {
                     write_log_message "Failed to retrieve email header. Please enter it manually." -level "Warning" -writeToConsole $true
                     $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
                 }
-            } else {
-                write_log_message "Failed to retrieve the domains list. Please enter the domain Security Header manually." -level "Warning" -writeToConsole $true
-                $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
-            }
-
             $setupWhitelist = Read-Host "Do you want to proceed with whitelisting setup for this client? (yes/no)"
-            if ($setupWhitelist -eq "yes") {
+            if ($setupWhitelist.ToLower() -eq "yes") {
                 validate_phished_configuration
-                condfigure_phished_domains_and_ips
+                configure_phished_domains_and_ips
+                create_transport_rules
+                write_log_message "Whitelisting setup completed successfully." -level "Success" -writeToConsole $true
+            }
+                validate_phished_configuration
+                configure_phished_domains_and_ips
                 create_transport_rules
                 write_log_message "Whitelisting setup completed successfully." -level "Success" -writeToConsole $true
             }
@@ -361,7 +383,10 @@ What would you like to do
                 update_transport_rules_security_header
                 write_log_message "Completed." -level "Success" -writeToConsole $true
             }
-            6 { Exit }
+            6 { 
+                write_log_message "Exiting Phished setup script. Goodbye!" -level "Info" -writeToConsole $true
+                Exit 
+            }
             default {
                 write_log_message "Invalid selection. Please try again." -level "Warning" -writeToConsole $true
             }
