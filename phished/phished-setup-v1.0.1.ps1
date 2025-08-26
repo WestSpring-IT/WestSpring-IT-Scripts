@@ -1,18 +1,28 @@
 ﻿<#
-.SYNOPSIS
-[Add a brief summary of what the code does.]
 
-.DESCRIPTION
-[Provide a detailed description of the code's functionality, including any important details or considerations.]
-
-.PARAMETER [ParameterName]
-[Describe each parameter, its purpose, and expected input.]
+.PARAMETER phishedAPIUsername
+    The username for the Phished Partner API.
+.PARAMETER phishedAPIToken
+    The API token for the Phished Partner API.
+.PARAMETER phishedAPISecret
+    The API secret for the Phished Partner API.
+.PARAMETER clientEmail
+    The email address of the client to be created.
 
 .EXAMPLE
-[Provide an example of how to use the code.]
+    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "client-phished@westwpring-it.co.uk"
+
+.SYNOPSIS
+    Sets up the environment and necessary configurations for the "phished" script version 1.0.1.
+
+.DESCRIPTION
+    This script automates the setup process for the "phished" tool, including environment preparation, dependency installation, and configuration steps required for proper operation.
 
 .NOTES
-[Include any additional notes, such as author, date, or references.]
+    File Name : phished-setup-v1.0.1.ps1
+    Author    : Fergus Barker - WestSpring IT
+    Version   : 1.0.1
+    Last Updated : 2025-08-22
 #>
 
 function write_log_message {
@@ -54,15 +64,25 @@ Function check_admin_privileges {
             $ElevatedProcess.Verb = "runas"
             [System.Diagnostics.Process]::Start($ElevatedProcess)
         } else {
-            Write-Host "Cannot self-elevate: script path not found. Please run this script from a .ps1 file." -ForegroundColor Red
+            write_log_message "Cannot self-elevate: script path not found. Please run this script from a .ps1 file." -level "Error" -writeToConsole $true
         }
         Exit
     }
     write_log_message "Script is running with Administrator privileges!" -level "Success" -writeToConsole $true
 }
-check_admin_privileges
+#check_admin_privileges
 
-
+# Set parameters
+Param(
+    [Parameter(Mandatory = $false)]
+    [string]$phishedAPIUsername,
+    [Parameter(Mandatory = $false)]
+    [string]$phishedAPIToken,
+    [Parameter(Mandatory = $false)]
+    [string]$phishedAPISecret,
+    [Parameter(Mandatory = $false)]
+    [string]$clientEmail
+)
 # Script version
 $scriptversion = "V1.0.1"
 write_log_message "Phished - Synchronisation Tool $scriptversion `n
@@ -76,7 +96,7 @@ Function ensure_exchange_connection {
         $defaultDomain = (Get-AcceptedDomain | Where-Object {$_.Default -eq $true}).DomainName
         if ($connectionState -ne "Connected") {
             write_log_message "Connecting to Exchange Online..." -level "Info" -writeToConsole $true
-            Connect-ExchangeOnline -ErrorAction Stop
+            Connect-ExchangeOnline -ErrorAction Stop -Verbose
             write_log_message "Connected to Exchange Online successfully." -level "Success" -writeToConsole $true
         } else {
             write_log_message "Already connected to Exchange Online." -level "Info" -writeToConsole $true
@@ -101,7 +121,7 @@ Function load_required_modules {
         write_log_message "ExchangeOnlineManagement module loaded successfully." -level "Success" -writeToConsole $true
 
         # Ensure connection to Exchange Online
-        ensure_exchange_connection
+        #ensure_exchange_connection
 
         # Validate required cmdlets
         @(
@@ -134,7 +154,7 @@ Function validate_phished_configuration {
 
     if ($missingIPs.Count -gt 0) {
         write_log_message "The following Phished IPs are not whitelisted:" -level "Warning" -writeToConsole $true
-        $missingIPs | ForEach-Object { write_log_message $_ -ForegroundColor Yellow }
+        $missingIPs | ForEach-Object { write_log_message $_ -level "Warning" -writeToConsole $true }
     } else {
         write_log_message "All required Phished IPs are whitelisted." -level "Success" -writeToConsole $true
     }
@@ -221,7 +241,6 @@ Function create_transport_rules {
     }
 }
 
-
 # Update existing transport rules with a new security header
 Function update_transport_rules_security_header {
     $securityHeader = Read-Host "Enter the new domain Security Header"
@@ -243,8 +262,11 @@ Function update_transport_rules_security_header {
 # Create a new Phished customer via Partner API
 Function create_phished_customer {
     $username = Read-Host "Enter your Partner API username"
+    write_log_message "Username entered: $username" -level "Info" -writeToConsole $false
     $apiToken = Read-Host "Enter your Partner API token"
+    write_log_message "API Token entered: $apiToken" -level "Info" -writeToConsole $false
     $apiSecret = Read-Host "Enter your Partner API secret"
+    write_log_message "API Secret entered: $apiSecret" -level "Info" -writeToConsole $false
 
     write_log_message "Authorizing with Partner API..." -level "Info" -writeToConsole $true
     $authResponse = Invoke-RestMethod -Uri "https://partners.phished.io/api/authorize" -Method POST -ContentType "application/json" -Body (@{
@@ -258,10 +280,15 @@ Function create_phished_customer {
         $authToken = $authResponse.token
 
         $email = Read-Host "Enter client email"
+        write_log_message "Client email entered: $email" -level "Info" -writeToConsole $false
         $firstName = Read-Host "Enter client first name"
+        write_log_message "Client first name entered: $firstName" -level "Info" -writeToConsole $false
         $lastName = Read-Host "Enter client last name"
+        write_log_message "Client last name entered: $lastName" -level "Info" -writeToConsole $false
         $organisationName = Read-Host "Enter client organisation name"
+        write_log_message "Client organisation name entered: $organisationName" -level "Info" -writeToConsole $false
         $wantsOnboardingInput = Read-Host "Does the client want the onboarding wizard? (yes/no)"
+        write_log_message "Client onboarding preference entered: $wantsOnboardingInput" -level "Info" -writeToConsole $false
         $wantsOnboarding = if ($wantsOnboardingInput -eq "yes") { $true } else { $false }
 
         $clientResponse = Invoke-RestMethod -Uri "https://partners.phished.io/api/clients" -Method POST -Headers @{ Authorization = "Bearer $authToken" } -ContentType "application/json" -Body (@{
@@ -274,6 +301,7 @@ Function create_phished_customer {
 
         write_log_message "Client created successfully:" -level "Success" -writeToConsole $true
         Write-Output $clientResponse
+        write_log_message "Client ID: $($clientResponse.id)" -level "Info" -writeToConsole $false
 
         $clientName = $organisationName
         write_log_message "Fetching client ID for $clientName..." -level "Info" -writeToConsole $true
@@ -285,7 +313,9 @@ Function create_phished_customer {
             write_log_message "Client ID retrieved: $clientId" -level "Success" -writeToConsole $true
 
             $domain = Read-Host "Enter the domain to associate with the client"
+            write_log_message "Domain entered: $domain" -level "Info" -writeToConsole $false
             $forwardEmail = Read-Host "Enter the forwarding email (where do reports end up)"
+            write_log_message "Forwarding email entered: $forwardEmail" -level "Info" -writeToConsole $false
 
             $domainBody = @{
                 domain = $domain
@@ -329,10 +359,10 @@ Function create_phished_customer {
                 create_transport_rules
                 write_log_message "Whitelisting setup completed successfully." -level "Success" -writeToConsole $true
             }
-                validate_phished_configuration
+                <# validate_phished_configuration
                 configure_phished_domains_and_ips
                 create_transport_rules
-                write_log_message "Whitelisting setup completed successfully." -level "Success" -writeToConsole $true
+                write_log_message "Whitelisting setup completed successfully." -level "Success" -writeToConsole $true #>
             }
         } else {
             write_log_message "Failed to retrieve Client ID. Please verify the client name." -level "Error" -writeToConsole $true
@@ -364,22 +394,22 @@ What would you like to do
                 create_phished_customer
             }
             2 {
-                ensure_exchange_connection
+                #ensure_exchange_connection
                 condfigure_phished_domains_and_ips
                 write_log_message "Completed." -level "Success" -writeToConsole $true
             }
             3 {
-                ensure_exchange_connection
+                #ensure_exchange_connection
                 create_transport_rules
                 write_log_message "Completed." -level "Success" -writeToConsole $true
             }
             4 {
-                ensure_exchange_connection
+                #ensure_exchange_connection
                 update_transport_rules_security_header
                 write_log_message "Completed." -level "Success" -writeToConsole $true
             }
             5 {
-                ensure_exchange_connection
+                #ensure_exchange_connection
                 update_transport_rules_security_header
                 write_log_message "Completed." -level "Success" -writeToConsole $true
             }
