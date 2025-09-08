@@ -24,6 +24,14 @@
     Version   : 1.0.1
     Last Updated : 2025-08-22
 #>
+# Set parameters
+Param(
+    [Parameter(Mandatory = $false)]
+    [string]$phishedAPIUsername,
+    [string]$phishedAPIToken,
+    [string]$phishedAPISecret,
+    [string]$clientEmail
+)
 
 function write_log_message {
     param(
@@ -72,17 +80,6 @@ Function check_admin_privileges {
 }
 #check_admin_privileges
 
-# Set parameters
-Param(
-    [Parameter(Mandatory = $false)]
-    [string]$phishedAPIUsername,
-    [Parameter(Mandatory = $false)]
-    [string]$phishedAPIToken,
-    [Parameter(Mandatory = $false)]
-    [string]$phishedAPISecret,
-    [Parameter(Mandatory = $false)]
-    [string]$clientEmail
-)
 # Script version
 $scriptversion = "V1.0.1"
 write_log_message "Phished - Synchronisation Tool $scriptversion `n
