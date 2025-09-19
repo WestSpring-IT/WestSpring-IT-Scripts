@@ -28,10 +28,36 @@
 Param(
     [Parameter(Mandatory = $false)]
     [string]$phishedAPIUsername,
+    [Parameter(Mandatory = $false)]
     [string]$phishedAPIToken,
+    [Parameter(Mandatory = $false)]
     [string]$phishedAPISecret,
-    [string]$clientEmail
+    [Parameter(Mandatory = $false)]
+    [string]$clientEmail,
+    [switch]$help
 )
+
+if ($help) {
+    Write-Host @"
+Phished Setup Script v1.0.1
+
+.PARAMETER phishedAPIUsername
+    The username for the Phished Partner API.
+.PARAMETER phishedAPIToken
+    The API token for the Phished Partner API.
+.PARAMETER phishedAPISecret
+    The API secret for the Phished Partner API.
+.PARAMETER clientEmail
+    The email address of the client to be created.
+.PARAMETER help
+    Displays this help message.
+
+.EXAMPLE
+    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "client-phished@westwpring-it.co.uk" -help
+
+"@ -ForegroundColor Cyan
+    Exit
+}
 
 function write_log_message {
     param(
@@ -61,14 +87,16 @@ function write_log_message {
     Add-Content -Path $logFilePath -Value $logEntry
 }
 
-# Ensure the script runs with elevated privileges
 Function check_admin_privileges {
     $CurrentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $CurrentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)) {
-        if ($MyInvocation.MyCommand.Path) {
-            # write_log_message -message "Script path: '$($MyInvocation.MyCommand.Path)'" -level "Info" -writeToConsole $true
+        $scriptPath = $MyInvocation.MyCommand.Path
+        if (-not $scriptPath) {
+            $scriptPath = $PSCommandPath
+        }
+        if ($scriptPath) {
             $ElevatedProcess = New-Object System.Diagnostics.ProcessStartInfo "PowerShell"
-            $ElevatedProcess.Arguments = "& '" + $MyInvocation.MyCommand.Path + "'"
+            $ElevatedProcess.Arguments = "& '" + $scriptPath + "'"
             $ElevatedProcess.Verb = "runas"
             [System.Diagnostics.Process]::Start($ElevatedProcess)
         } else {
@@ -90,19 +118,19 @@ Function ensure_exchange_connection {
     try {
         # Check if already connected
         $connectionState = Get-ConnectionInformation | Select-Object -ExpandProperty State -ErrorAction SilentlyContinue
-        $defaultDomain = (Get-AcceptedDomain | Where-Object {$_.Default -eq $true}).DomainName
         if ($connectionState -ne "Connected") {
             write_log_message "Connecting to Exchange Online..." -level "Info" -writeToConsole $true
-            Connect-ExchangeOnline -ErrorAction Stop -Verbose
+            Connect-ExchangeOnline -ShowBanner:$false 
             write_log_message "Connected to Exchange Online successfully." -level "Success" -writeToConsole $true
         } else {
+            $defaultDomain = (Get-AcceptedDomain | Where-Object {$_.Default -eq $true}).DomainName
             write_log_message "Already connected to Exchange Online." -level "Info" -writeToConsole $true
             write_log_message "Connected tenant: $defaultDomain" -level "Info" -writeToConsole $true
         }
     } catch {
         write_log_message "Failed to connect to Exchange Online. Please check your credentials and network." -level "Error" -writeToConsole $true
         write_log_message "Error: $($_.Exception.Message)" -level "Error" -writeToConsole $true
-        Exit
+        Read-Host
     }
 }
 
@@ -141,6 +169,9 @@ Function load_required_modules {
 
 # Call load_required_modules
 load_required_modules
+
+# call ensure_exchange_connection
+ensure_exchange_connection
 
 # Check Phished IPs and DKIM setup
 Function validate_phished_configuration {
@@ -369,6 +400,7 @@ Function create_phished_customer {
     }
 }
 
+##TODO Add fucntions to create security groups, create enterprise apps, configure SSO and provisioning, add and deploy Outlook Add-in
 
 
 
