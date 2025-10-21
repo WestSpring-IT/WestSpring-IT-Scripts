@@ -1,5 +1,5 @@
-
-<#
+function write_log_message {
+    <#
 .SYNOPSIS
     Writes a formatted log message to a daily log file and optionally to the console.
 
@@ -44,9 +44,6 @@
 
     Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
 #>
-
-
-function write_log_message {
     param(
         [Parameter(Mandatory = $true)]
         [string]$message,
@@ -56,9 +53,9 @@ function write_log_message {
         [Parameter(Mandatory = $false)]
         [Boolean]$writeToConsole = $false
     )
-    $scriptName = $MyInvocation.MyCommand.Name
-    $timestamp = Get-Date -Format "yyyy-MM-dd_THH:mm:ss"
-    $logEntry = "[$timestamp] [$Level] $Message"
+    $scriptName = $($Script:MyInvocation.MyCommand.Name).TrimEnd(".ps1")
+    $timestamp = Get-Date -Format "yyyy-MM-dd_THHmmss"
+    $logEntry = "[$timestamp] [$level] $message"
     
     switch ($level) {
         "Success" {$consoleColour = "Green"}

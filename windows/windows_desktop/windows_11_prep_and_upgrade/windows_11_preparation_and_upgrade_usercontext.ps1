@@ -1,3 +1,34 @@
+function write_log_message {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$message,
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Info", "Warning", "Error", "Success")]
+        [string]$level = "Info",
+        [Parameter(Mandatory = $false)]
+        [Boolean]$writeToConsole = $true
+    )
+    $Global:scriptName = $null
+    $Global:scriptName = "windows_11_preparation_and_upgrade_usercontext" #$(Split-Path $MyInvocation.ScriptName -Leaf).TrimEnd(".ps1")
+    $timestamp = Get-Date -Format "yyyy-MM-dd_THH:mm:ss"
+    $logEntry = "[$timestamp] [$level] $message"
+    
+    switch ($level) {
+        "Success" {$consoleColour = "Green"}
+        "Info"    {$consoleColour = "Cyan"}
+        "Warning" {$consoleColour = "Yellow"}
+        "Error"   {$consoleColour = "Red"}
+    }
+    if ($writeToConsole) {
+        Write-Host $logEntry -ForegroundColor $consoleColour
+    }
+    # Append to log file
+    if (-not $Global:logFilePath) {
+        $Global:logFilePath = $null
+        $Global:logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($Global:scriptName).log"
+    }
+    Add-Content -Path $Global:logFilePath -Value $logEntry
+}
 function download_file {
     <#
         .SYNOPSIS
@@ -37,10 +68,6 @@ function download_file {
         .EXAMPLE
         download_file -Uri "https://example.com/file.zip"
 
-        .EXAMPLE
-        $result = download_file -Uri "https://example.com/file.zip" -MaxTries 5
-        Write-Host "Downloaded file size: $($result.fileSize) MB"
-
         .NOTES
         Requires PowerShell 5.0 or later.
         #>
@@ -58,7 +85,7 @@ function download_file {
         $Link = [System.Net.HttpWebRequest]::Create($Uri).GetResponse().ResponseUri.AbsoluteUri
         $fileName = [uri]::UnescapeDataString($Link) | Split-Path -Leaf
     }
-    # Create target path if it doesn't exist
+        # Create target path if it doesn't exist
     if (!(Test-Path -Path $filePath)) {
         try {
             New-Item -ItemType Directory -Path $filePath | Out-Null
@@ -117,4 +144,53 @@ function download_file {
     return $result
 
 }
+function get_current_windows_version {
+    $info = Get-ComputerInfo    
+        $result = [PSCustomObject]@{
+            osName = $info.OsName
+            osVersion = $info.OsVersion
+            osBuildNumber = $info.OsBuildNumber
+        }
+        return $result
+}
+
+$osInfo = get_current_windows_version
+
+write_log_message "Current OS: $($osInfo.osName) Version: $($osInfo.osVersion) Build: $($osInfo.osBuildNumber)"
+if ([version]$osInfo.osVersion -gt [version]"10.0.20000") {
+    write_log_message "This device is already running Windows 11. No upgrade necessary." -level "Warning"
+    exit 0
+}
+else {
+    write_log_message "This device is running $($osInfo.osName). Proceeding with Windows 11 upgrade preparation."
+    if (Get-process | Where-Object {$_.Name -like "Windows10*" -or $_.Name -like "Windows11*"}) {
+        write_log_message "Another installation or upgrade process is currently running." -level "Warning"
+        break
+    }
+    # Download the Windows 11 Installation Assistant
+    $downloadUrl = "https://go.microsoft.com/fwlink/?linkid=2171764"
+    $downloadResult = download_file -Uri $downloadUrl -filePath "C:\IT\Windows11" -MaxTries 3
+    $arguments = @("/ShowProgressInTaskBarIcon", "/SkipEULA", "/Auto Upgrade")
+    $username = "$($env:COMPUTERNAME)\Windows11Upgrade"
+    $password = "$((Get-WmiObject -class win32_bios).SerialNumber)_W1nd0w5!!"
+    $credentials = New-Object System.Management.Automation.PSCredential -ArgumentList @($username, (ConvertTo-SecureString -String $password -AsPlainText -Force))
+    if ($downloadResult.success -eq $true) {
+        try {
+           #Start-Process powershell.exe -Credential $credentials -WindowStyle Hidden -ArgumentList "$($downloadResult.fullPath) $($arguments -join " ")" -ErrorAction Stop
+           #Start-Process powershell.exe -Credential $credentials -ArgumentList "Start-Process -FilePath $($downloadResult.fullPath) -ArgumentList $arguments -Verb runAs"
+           #Start-Process $downloadResult.fullPath -ArgumentList $arguments -WindowStyle Hidden #-Credential $credentials
+        }
+        catch {
+            write_log_message "Error starting upgrade process: $($_.Exception.Message)" -level "Error"
+            break
+        }
+    }
+    else {
+        write_log_message "Failed to download Windows 11 Installation Assistant." -level "Error"
+        break
+    }
+    write_log_message "Upgrade process initiated. Please monitor the system for completion." -level "Success"
+    write_log_message "log file located at $Global:logFilePath"
+}
+
 
