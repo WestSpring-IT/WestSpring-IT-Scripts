@@ -207,6 +207,7 @@ if (Test-Path $wgVpnRegPath) {
     write_log_message -message "WG SSL VPN Client is not currently installed (no registry entry found)." -level "Warning" -writeToConsole $true
 }
 
+## TODO : Update the URL to point to the latest version dynamically if possible
 $wgDownloadResult = download_file -Uri "https://cdn.watchguard.com/SoftwareCenter/Files/MUVPN_SSL/12_11_4/WG-MVPN-SSL_12_11_4.exe" -filePath "$env:TEMP\wg_sslvpn" -MaxTries 3
 If ([version]$wgVpnVersion -ge [version](Get-ItemProperty -Path $wgDownloadResult.fullPath).VersionInfo.ProductVersion) {
     write_log_message -message "Installed WG SSL VPN Client version $wgVpnVersion is up to date. No update required." -level "Info" -writeToConsole $true
