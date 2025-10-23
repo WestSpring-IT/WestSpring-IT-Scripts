@@ -117,4 +117,3 @@ function download_file {
     return $result
 
 }
-

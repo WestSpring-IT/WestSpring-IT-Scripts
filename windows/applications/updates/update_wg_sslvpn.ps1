@@ -119,49 +119,49 @@ function download_file {
 }
 function write_log_message {
     <#
-.SYNOPSIS
-    Writes a formatted log message to a daily log file and optionally to the console.
+        .SYNOPSIS
+            Writes a formatted log message to a daily log file and optionally to the console.
 
-.DESCRIPTION
-    The write_log_message function logs messages with a timestamp and severity level.
-    It writes the log entry to a log file located in the user's TEMP directory, named
-    after the script and the current date. Optionally, it can also output the message
-    to the console in a color corresponding to the severity level.
+        .DESCRIPTION
+            The write_log_message function logs messages with a timestamp and severity level.
+            It writes the log entry to a log file located in the user's TEMP directory, named
+            after the script and the current date. Optionally, it can also output the message
+            to the console in a color corresponding to the severity level.
 
-.PARAMETER message
-    The message text to log. This parameter is mandatory.
+        .PARAMETER message
+            The message text to log. This parameter is mandatory.
 
-.PARAMETER level
-    The severity level of the message. Valid values are:
-    - Info (default)
-    - Warning
-    - Error
-    - Success
+        .PARAMETER level
+            The severity level of the message. Valid values are:
+            - Info (default)
+            - Warning
+            - Error
+            - Success
 
-.PARAMETER writeToConsole
-    If set to $false (default), the message is only written to the log file.
-    If set to $true, the message will also be written to the console with color coding.
+        .PARAMETER writeToConsole
+            If set to $false (default), the message is only written to the log file.
+            If set to $true, the message will also be written to the console with color coding.
 
-.EXAMPLE
-    write_log_message -message "Script started."
+        .EXAMPLE
+            write_log_message -message "Script started."
 
-    Logs an informational message to the log file.
+            Logs an informational message to the log file.
 
-.EXAMPLE
-    write_log_message -message "Operation completed successfully." -level "Success" -writeToConsole $true
+        .EXAMPLE
+            write_log_message -message "Operation completed successfully." -level "Success" -writeToConsole $true
 
-    Logs a success message to the log file and displays it in green in the console.
+            Logs a success message to the log file and displays it in green in the console.
 
-.EXAMPLE
-    write_log_message -message "An error occurred." -level "Error"
+        .EXAMPLE
+            write_log_message -message "An error occurred." -level "Error"
 
-    Logs an error message to the log file in red (if displayed in console).
+            Logs an error message to the log file in red (if displayed in console).
 
-.NOTES
-    Log files are stored in the TEMP directory with the format:
-    yyyy-MM-dd_<ScriptName>.log
+        .NOTES
+            Log files are stored in the TEMP directory with the format:
+            yyyy-MM-dd_<ScriptName>.log
 
-    Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
+            Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
 #>
     param(
         [Parameter(Mandatory = $true)]
@@ -191,106 +191,180 @@ function write_log_message {
 }
 
 
-# Check current installed version of WG SSL VPN Client using registry
-$wgVpnRegPath = "HKLM:SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Mobile VPN with SSL client*" 
-write-host $Script:MyInvocation.MyCommand.Name
+# --- Main script ---
+$wgVpnRegPath = "HKLM:SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\Mobile VPN with SSL client*"
 $wgVpnVersion = $null
+
 if (Test-Path $wgVpnRegPath) {
     try {
         $wgVpnVersion = (Get-ItemProperty -Path $wgVpnRegPath -ErrorAction Stop).DisplayVersion
         write_log_message -message "Current installed WG SSL VPN Client version (from registry): $wgVpnVersion" -level "Info" -writeToConsole $true
-    }
-    catch {
+    } catch {
         write_log_message -message "Unable to retrieve WG SSL VPN Client version from registry: $($_.Exception.Message)" -level "Warning" -writeToConsole $true
     }
 } else {
     write_log_message -message "WG SSL VPN Client is not currently installed (no registry entry found)." -level "Warning" -writeToConsole $true
 }
-
-## TODO : Update the URL to point to the latest version dynamically if possible
+# download installer
 $wgDownloadResult = download_file -Uri "https://cdn.watchguard.com/SoftwareCenter/Files/MUVPN_SSL/12_11_4/WG-MVPN-SSL_12_11_4.exe" -filePath "$env:TEMP\wg_sslvpn" -MaxTries 3
-If ([version]$wgVpnVersion -ge [version](Get-ItemProperty -Path $wgDownloadResult.fullPath).VersionInfo.ProductVersion) {
-    write_log_message -message "Installed WG SSL VPN Client version $wgVpnVersion is up to date. No update required." -level "Info" -writeToConsole $true
-    exit 0
-} 
-else {
-    write_log_message -message "A newer version of WG SSL VPN Client is available. Proceeding with update." -level "Info" -writeToConsole $true
+if (-not $wgDownloadResult.success) {
+    write_log_message -message "Failed to download WG installer. Aborting." -level "Error" -writeToConsole $true
+    exit 1
 }
-$webviewDownloadResults = download_file -Uri "https://wsprodfileuksouth.blob.core.windows.net/clients/Watchguard.zip" -filePath "$env:TEMP\wg_sslvpn" -MaxTries 3
 
-if(Test-Path $webviewDownloadResults.fullPath) {
-    # Unzip the downloaded file
-    $extractPath = "$env:TEMP\wg_sslvpn\"
+try { $downloadVersion = (Get-ItemProperty -Path $wgDownloadResult.fullPath).VersionInfo.ProductVersion } catch { $downloadVersion = $null }
+
+# Determine whether installer should run, but continue with webview copy regardless
+$installRequired = $true
+if ($wgVpnVersion -and $downloadVersion) {
     try {
-            Expand-Archive -Path $webviewDownloadResults.fullPath -DestinationPath $extractPath -Force
-            write_log_message -message "Extracted archive to $extractPath successfully." -level "Success" -writeToConsole $true
+        if ([version]$wgVpnVersion -ge [version]$downloadVersion) {
+            write_log_message -message "Installed WG SSL VPN Client version $wgVpnVersion is up to date. Skipping installer execution but continuing with WebView copies." -level "Info" -writeToConsole $true
+            $installRequired = $false
+        } else {
+            write_log_message -message "A newer version of WG SSL VPN Client is available. Proceeding with update." -level "Info" -writeToConsole $true
+            $installRequired = $true
+        }
+    } catch {
+        write_log_message -message "Version comparison failed: $($_.Exception.Message) — proceeding with install." -level "Warning" -writeToConsole $true
+        $installRequired = $true
+    }
+} else {
+    write_log_message -message "Proceeding with install/update (version info unavailable)." -level "Info" -writeToConsole $true
+    $installRequired = $true
+}
+
+
+
+# download webview zip
+$webviewDownloadResults = download_file -Uri "https://wsprodfileuksouth.blob.core.windows.net/clients/Watchguard.zip" -filePath "$env:TEMP\wg_sslvpn" -MaxTries 3
+if (-not $webviewDownloadResults.success -or -not (Test-Path $webviewDownloadResults.fullPath)) {
+    write_log_message -message "Failed to download Watchguard.zip. Continuing without per-user copies." -level "Warning" -writeToConsole $true
+}
+
+$extractPath = "$env:TEMP\wg_sslvpn\"
+if (Test-Path $webviewDownloadResults.fullPath) {
+    try {
+        Expand-Archive -Path $webviewDownloadResults.fullPath -DestinationPath $extractPath -Force
+        write_log_message -message "Extracted archive to $extractPath successfully." -level "Success" -writeToConsole $true
     }
     catch {
-            write_log_message -message "Failed to extract archive: $($_.Exception.Message)" -level "Error" -writeToConsole $true
+        write_log_message -message "Failed to extract archive: $($_.Exception.Message)" -level "Error" -writeToConsole $true
     }
-} 
-# Check if WGSSSLVPN if it is running
-$appRunning = get-process | Where-Object { $_.Name -like "wgsslvpnc" }
-$NetAdapter = Get-NetAdapter | Where-Object { $_.InterfaceDescription -eq "TAP-Windows Adapter V9" }
+}
+
+# installer handling (only if needed)
+$appRunning = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "wgsslvpnc" }
+$NetAdapter = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceDescription -eq "TAP-Windows Adapter V9" }
 $arguments = '/silent /verysilent'
+$process = $null
 
-if ($NetAdapter.Status -eq "Up") {
-    write_log_message -message "TAP-Windows Adapter V9 is currently active. Disabling the network adapter before installation." -level "Warning" -writeToConsole $true
-    Disable-NetAdapter -Name $NetAdapter.Name -Confirm:$false
-    Start-Sleep -Seconds 5
+if ($installRequired) {
+    if ($NetAdapter -and $NetAdapter.Status -eq "Up") {
+        write_log_message -message "TAP-Windows Adapter V9 is currently active. Disabling the network adapter before installation." -level "Warning" -writeToConsole $true
+        Disable-NetAdapter -Name $NetAdapter.Name -Confirm:$false -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
+    } else {
+        write_log_message -message "TAP-Windows Adapter V9 is not active or not present. No action needed." -level "Info" -writeToConsole $true
+    }
+
+    if ($null -eq $appRunning) {
+        write_log_message -message "WatchGuard SSL VPN Client is not running. Proceeding with installation." -level "Info" -writeToConsole $true
+        $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -PassThru -Wait -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 60
+    } else {
+        write_log_message -message "WatchGuard SSL VPN Client is currently running. Stopping the application for installation." -level "Warning" -writeToConsole $true
+        try { Stop-Process -Id $appRunning.Id -Force -ErrorAction SilentlyContinue } catch {}
+        Start-Sleep -Seconds 5
+        write_log_message -message "Installing WatchGuard SSL VPN Client." -level "Info" -writeToConsole $true
+        $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -PassThru -Wait -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 60
+    }
 } else {
-    write_log_message -message "TAP-Windows Adapter V9 is not active. No action needed." -level "Info" -writeToConsole $true
-}
-If (($null -eq $appRunning)) {
-    # Install WG MVPN SSL
-    write_log_message -message "WatchGuard SSL VPN Client is not running. Proceeding with installation." -level "Info" -writeToConsole $true
-    $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -Wait
-    Start-Sleep -Seconds 60
-}
-else {
-    write_log_message -message "WatchGuard SSL VPN Client is currently running. Stopping the application for installation." -level "Warning" -writeToConsole $true
-    Stop-Process -Name $appRunning.Name -Force
-    Start-Sleep -seconds 5
-    write_log_message -message "Installing WatchGuard SSL VPN Client." -level "Info" -writeToConsole $true
-    $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -PassThru -ErrorAction SilentlyContinue -Wait
-    Start-Sleep -Seconds 60
+    write_log_message -message "Installation skipped (already up to date). Continuing with WebView per-user copy." -level "Info" -writeToConsole $true
 }
 
-if ($process.ExitCode -eq 0) {
-    write_log_message -message "WatchGuard SSL VPN Client installation process completed with exit code 0." -level "Success" -writeToConsole $true
+if ($process -and $process.HasExited) {
+    if ($process.ExitCode -eq 0) {
+        write_log_message -message "WatchGuard SSL VPN Client installation process completed with exit code 0." -level "Success" -writeToConsole $true
+    } else {
+        write_log_message -message "WatchGuard SSL VPN Client installation process failed with exit code $($process.ExitCode)." -level "Error" -writeToConsole $true
+    }
+} else {
+    if ($installRequired) {
+        write_log_message -message "Installer process information not available." -level "Warning" -writeToConsole $true
+    }
 }
-else {
-    write_log_message -message "WatchGuard SSL VPN Client installation process failed with exit code $($process.ExitCode)." -level "Error" -writeToConsole $true
-}   
 
 $appInstalled = Get-Item "C:\Program Files (x86)\WatchGuard\WG SSL VPN Client\wgsslvpnc.exe" -ErrorAction SilentlyContinue
-If ($null -ne $appInstalled) {
+if ($null -ne $appInstalled) {
     write_log_message -message "WatchGuard SSL VPN Client installed successfully." -level "Success" -writeToConsole $true
+} else {
+    if ($installRequired) {
+        write_log_message -message "WatchGuard SSL VPN Client installation may have failed (executable not found)." -level "Error" -writeToConsole $true
+    }
 }
-else {
-    write_log_message -message "WatchGuard SSL VPN Client installation failed." -level "Error" -writeToConsole $true
-}
-$users = Get-ChildItem "C:\Users" | Where-Object { $_.PSIsContainer }
 
-# Dynamically determine the extracted folder name
-$extractedFolders = Get-ChildItem -Path "$env:TEMP\wg_sslvpn" -Directory
-if ($extractedFolders.Count -gt 0) {
-    $sourceFolder = $extractedFolders[0].FullName
+# Determine extracted source folder
+$extractedFolders = @()
+if (Test-Path $extractPath) {
+    $extractedFolders = Get-ChildItem -Path $extractPath -Directory -ErrorAction SilentlyContinue
 }
-else {
-    $sourceFolder = "$env:TEMP\wg_sslvpn"
-    Copy-Item -Path "$env:TEMP\wg_sslvpn\Watchguard\*" -Destination $destPath -Recurse -Force 
-    write_log_message -message "Copied configuration files to user $($user.Name) successfully." -level "Success" -writeToConsole $true
+
+if ($extractedFolders -and $extractedFolders.Count -gt 0) {
+    $sourceFolder = $extractedFolders[0].FullName
+} else {
+    if (Test-Path -Path (Join-Path $extractPath 'Watchguard')) {
+        $sourceFolder = (Join-Path $extractPath 'Watchguard')
+    } else {
+        $sourceFolder = $extractPath
+    }
+}
+
+# --- Per-user copy: copy full source contents into each user's AppData\Local\Watchguard ---
+$excludedProfiles = @('Public','Default','Default User','All Users','desktop.ini','defaultuser0','WDAGUtilityAccount')
+$users = Get-ChildItem 'C:\Users' -Directory -ErrorAction SilentlyContinue | Where-Object { $excludedProfiles -notcontains $_.Name }
+
+# Locate WebView2Runtime inside the extracted source (preferential) or anywhere under extractPath
+$webviewSource = $null
+$testWebview = Join-Path -Path $sourceFolder -ChildPath 'WebView2Runtime'
+if (Test-Path -Path $testWebview) {
+    $webviewSource = $testWebview
+} else {
+    if (Test-Path $sourceFolder) {
+        $match = Get-ChildItem -Path $sourceFolder -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'WebView2Runtime' } | Select-Object -First 1
+        if ($match) { $webviewSource = $match.FullName }
+    }
+    if (-not $webviewSource -and (Test-Path $extractPath)) {
+        $match = Get-ChildItem -Path $extractPath -Recurse -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -ieq 'WebView2Runtime' } | Select-Object -First 1
+        if ($match) { $webviewSource = $match.FullName }
+    }
+}
+
+if (-not (Test-Path -Path $sourceFolder)) {
+    write_log_message -message "Source folder $sourceFolder not found. Skipping per-user copies." -level "Warning" -writeToConsole $true
+} else {
     foreach ($user in $users) {
+        $baseDest = Join-Path -Path $user.FullName -ChildPath 'AppData\Local\Watchguard'
         try {
-            Copy-Item -Path "$sourceFolder\*" -Destination "C:\Users\$($user.Name)\AppData\Local\" -Recurse -Force
-            write_log_message -message "Copied configuration files to user $user successfully." -level "Success" -writeToConsole $true
+            if (-not (Test-Path -Path $baseDest)) { New-Item -ItemType Directory -Path $baseDest -Force | Out-Null }
+
+            # Copy entire contents of the single sourceFolder into each user's Watchguard folder
+            Copy-Item -Path (Join-Path $sourceFolder '*') -Destination $baseDest -Recurse -Force -ErrorAction Stop
+            write_log_message -message "Copied contents of $sourceFolder to $($user.Name)\AppData\Local\Watchguard" -level "Success" -writeToConsole $true
+
+            # Ensure WebView2Runtime is present under AppData\Local\Watchguard\WebView2Runtime
+            if ($webviewSource) {
+                $destWebview = Join-Path -Path $baseDest -ChildPath 'WebView2Runtime'
+                if (-not (Test-Path -Path $destWebview)) { New-Item -ItemType Directory -Path $destWebview -Force | Out-Null }
+                Copy-Item -Path (Join-Path $webviewSource '*') -Destination $destWebview -Recurse -Force -ErrorAction Stop
+                write_log_message -message "Copied WebView2Runtime to $($user.Name) successfully." -level "Success" -writeToConsole $true
+            } else {
+                write_log_message -message "WebView2Runtime not found in extracted content. Skipping explicit WebView2 copy for $($user.Name)." -level "Warning" -writeToConsole $true
+            }
         }
         catch {
-            write_log_message -message "Failed to copy configuration files to user $($user.Name): $($_.Exception.Message)" -level "Error" -writeToConsole $true
-        } 
-    }   
+            write_log_message -message "Failed to copy files to $($user.Name): $($_.Exception.Message)" -level "Error" -writeToConsole $true
+        }
+    }
 }
-catch {
-    write_log_message -message "Failed to copy configuration files to user $($user): $($_.Exception.Message)" -level "Error" -writeToConsole $true
-} 
