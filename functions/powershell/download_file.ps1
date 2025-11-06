@@ -56,6 +56,7 @@ function download_file {
     # If no filename provided, extract from final redirected URL
     if (-not $fileName) {
         $Link = [System.Net.HttpWebRequest]::Create($Uri).GetResponse().ResponseUri.AbsoluteUri
+        Write-Host $link #debug
         $fileName = [uri]::UnescapeDataString($Link) | Split-Path -Leaf
     }
     # Create target path if it doesn't exist
@@ -103,6 +104,7 @@ function download_file {
             fullPath  = $fullPath
             fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
             totalTime = [math]::Round($totalTime, 2)
+            attempt   = $attempt
         } 
     }
     else {
@@ -112,6 +114,7 @@ function download_file {
             fullPath  = $fullPath
             fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
             totalTime = [math]::Round($totalTime, 2)
+            attempt   = $attempt
         }
     }
     return $result

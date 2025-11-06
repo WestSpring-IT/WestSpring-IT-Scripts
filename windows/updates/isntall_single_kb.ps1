@@ -35,6 +35,7 @@ param(
     [Parameter(Mandatory=$false)]
     [string]$OutDir = $env:TEMP,
 
+    [Parameter(Mandatory=$false)]
     [int]$TimeoutSeconds = 300
 )
 

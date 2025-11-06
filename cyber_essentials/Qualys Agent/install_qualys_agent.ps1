@@ -40,7 +40,7 @@ The Web Service URI extracted from the installString.
 .PARAMETER windowsVersion
 The version of the Windows operating system on which the script is being executed.
 
-.FUNCTION Write-Log
+.FUNCTION write_log_message
 Logs messages with a timestamp and severity level to both the console and the log file.
 
 .NOTES
@@ -58,38 +58,42 @@ Logs messages with a timestamp and severity level to both the console and the lo
 #>
 
 Param(
-    [Parameter(Mandatory = $true)]
-    [string]$installString = "",
+    [Parameter(Mandatory = $false)]
+    [string]$installString = "QualysCloudAgent.exe CustomerId={4ced42b6-21b2-e6d5-80a3-bf1f6d2597f6} ActivationId={a2835303-1ca0-428a-94f3-c351c441cedd} WebServiceUri=https://qagpublic.qg1.apps.qualys.co.uk/CloudAgent/", #"{[InstallString]}",
+    [Parameter(Mandatory = $false)]
     [string]$Uri = "https://wsprodfileuksouth.blob.core.windows.net/clients/qualys-agent-installers/QualysCloudAgent-Windows.exe"
-
 )
 $LogFile = "$env:TEMP\QualysAgentInstall.log"
 $DirPath = "$env:TEMP"
 $InstallerName = "QualysCloudAgent-Windows.exe"
 $InstallerPath = "$DirPath\$InstallerName"
+$installSuccess = $false
 if ($installString -match 'CustomerId=\{([^\}]+)\}') {
     $customerID = $matches[1]
 } else {
-    Write-Log "CustomerId not found in installString" "ERROR"
+    write_log_message "CustomerId not found in installString" "ERROR"
+    Exit 1
 }
 if ($installString -match 'ActivationId=\{([^\}]+)\}') {
     $activationID = $matches[1]
 } else {
-    Write-Log "ActivationId not found in installString" "ERROR"
+    write_log_message "ActivationId not found in installString" "ERROR"
+    Exit 2
 }
 if ($installString -match 'WebServiceUri=([^\s]+)') {
     $webServiceUri = $matches[1]
 } else {
-    Write-Log "WebServiceUri not found in installString" "ERROR"
+    write_log_message "WebServiceUri not found in installString" "ERROR"
+    Exit 3
 }
-$windowsVersion = (Get-ItemPropertyValue -LiteralPath "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion" -Name 'DisplayVersion')
+
 
 # Function Definitions
-# The Write-Log function is used to log messages with a timestamp and severity level.
+# The write_log_message function is used to log messages with a timestamp and severity level.
 # Parameters:
 # - Message: The message to log.
 # - Level: The severity level of the log message (default is "INFO").
-function Write-Log {
+function write_log_message {
     param (
         [string]$Message,
         [string]$Level = "INFO"
@@ -99,51 +103,67 @@ function Write-Log {
     Add-Content -Path $LogFile -Value "[$timestamp] [$Level] $Message"
 }
 
+$msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
+$agentInfo = Get-ItemProperty -Path "HKLM:\SOFTWARE\Qualys" -ErrorAction SilentlyContinue
+
+if ($msiProduct) {
+    write_log_message "Qualys Agent is already installed. Version: $($msiProduct.Version)" "INFO"
+    write_log_message "Installed CustomerID: $($agentInfo.CustomerID)" "INFO"
+    write_log_message "Installed ActivationID: $($agentInfo.ActivationID)" "INFO"
+    if (($qualysParams.customerID -eq ($customerID -replace '[{}]', '')) -and ($qualysParams.activationID -eq ($activationID -replace '[{}]', ''))) {
+        write_log_message "The installed Qualys Agent matches the provided CustomerID and ActivationID. No action needed." "INFO"
+        Exit 0
+    } else {
+        write_log_message "The installed Qualys Agent does not match the provided CustomerID and/or ActivationID." "WARNING"
+    }
+    write_log_message "If the endpoint needs to be re-registered, please uninstall the existing agent first." "INFO"
+    Exit 0
+}
+
 # Temporarily bypass the execution policy for this process to ensure the script runs without being blocked.
 # This change is limited to the current process and does not affect the system-wide policy.
 # Note: Bypassing the execution policy can pose security risks as it allows the execution of potentially harmful scripts.
-Write-Log "Bypassing execution policy for this process" "INFO"
+write_log_message "Bypassing execution policy for this process" "INFO"
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
 # Download the Qualys Agent
 $downloadSuccess = $false
 try {
-    Write-Log "Downloading the Qualys Agent from $Uri"
+    write_log_message "Downloading the Qualys Agent from $Uri"
     Invoke-RestMethod -Uri $Uri -OutFile $InstallerPath
     $downloadSuccess = $true
 }
 catch {
-    Write-Log "Failed to download the Qualys Agent: $($_.Exception.Message)" "ERROR"
+    write_log_message "Failed to download the Qualys Agent: $($_.Exception.Message)" "ERROR"
     if ($_.Exception.Response) {
-        Write-Log "Status Code: $($_.Exception.Response.StatusCode.value__)" "ERROR"
-        Write-Log "Status Description: $($_.Exception.Response.StatusDescription)" "ERROR"
+        write_log_message "Status Code: $($_.Exception.Response.StatusCode.value__)" "ERROR"
+        write_log_message "Status Description: $($_.Exception.Response.StatusDescription)" "ERROR"
     }
     else {
-        Write-Log "No Response object available in the exception." "ERROR"
+        write_log_message "No Response object available in the exception." "ERROR"
     }
-    Write-Log "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
+    write_log_message "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
     Exit 1
 }
 
 If ($downloadSuccess -and (Test-Path $InstallerPath)) {
-    Write-Log "The file, $InstallerName, successfully downloaded"
+    write_log_message "The file, $InstallerName, successfully downloaded"
     $installString = "CustomerId={$($customerID)} ActivationId={$($activationID)} WebServiceUri=$($webServiceUri)"    # Install Qualys Agent
-    Write-Log "CustomerID: $($customerID)"
-    Write-Log "ActivationID: $($activationID)"
-    Write-Log "WebServiceUri: $($webServiceUri)"
-    Write-Log "Windows Version: $($windowsVersion)"
-    Write-Log "Installing the Qualys Agent from $InstallerPath"
-    $installSuccess = $false
+    write_log_message "CustomerID: $($customerID)"
+    write_log_message "ActivationID: $($activationID)"
+    write_log_message "WebServiceUri: $($webServiceUri)"
+    write_log_message "Windows Version: $($windowsVersion)"
+    write_log_message "Installing the Qualys Agent from $InstallerPath"
     try {
-        Write-Log "Invoking the following command: cmd.exe /c $($InstallerPath) $($installString)" "INFO" 
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$InstallerPath $installString`"" -Wait -NoNewWindow -ErrorAction Stop
+        write_log_message "Invoking the following command: cmd.exe /c $($InstallerPath) $($installString)" "INFO" 
+        #Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$InstallerPath $installString`"" -Wait -NoNewWindow -ErrorAction Stop
         Start-Sleep -Seconds 5
         $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
         if ($msiProduct) {
             $installSuccess = $true
-            Write-Log "Qualys Agent ($($msiProduct.Version)) installation completed"
+            write_log_message "Qualys Agent ($($msiProduct.Version)) installation completed"
             Start-Sleep -Seconds 5
-            Write-Log "Starting the initial scan"
+            write_log_message "Starting the initial scan"
             if ((Test-Path -LiteralPath "HKLM:\SOFTWARE\Qualys\QualysAgent\ScanOnDemand\Vulnerability") -ne $true) {  
                 New-Item "HKLM:\SOFTWARE\Qualys\QualysAgent\ScanOnDemand\Vulnerability" -force -ea SilentlyContinue - | Out-Null
             };
@@ -152,8 +172,8 @@ If ($downloadSuccess -and (Test-Path $InstallerPath)) {
         
     }
     catch {
-        Write-Log "Failed to install the Qualys Agent: $($_.Exception.Message)" "ERROR"
-        Write-Log "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
+        write_log_message "Failed to install the Qualys Agent: $($_.Exception.Message)" "ERROR"
+        write_log_message "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
         Exit 1
     }
     
@@ -163,16 +183,16 @@ If ($downloadSuccess -and (Test-Path $InstallerPath)) {
     try {
         Remove-Item -Path $InstallerPath -ErrorAction Stop
         If (!(Test-Path $InstallerPath)) {
-            Write-Log "Installation files successfully removed"
+            write_log_message "Installation files successfully removed"
         }
     }
     catch {
-        Write-Log "Error occurred while removing installation files: $($_.Exception.Message)" "ERROR"
-        Write-Log "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
-        Write-Log "Please remove the installation files manually" "WARNING"
+        write_log_message "Error occurred while removing installation files: $($_.Exception.Message)" "ERROR"
+        write_log_message "Stack Trace: $($_.Exception.StackTrace)" "ERROR"
+        write_log_message "Please remove the installation files manually" "WARNING"
     }
 }
 else {
-    Write-Log "The file download failed, please try again" "ERROR"
+    write_log_message "The file download failed, please try again" "ERROR"
     Exit 1
 }

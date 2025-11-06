@@ -1,5 +1,6 @@
 $filePath = "C:\IntuneWIN\IntuneWinAppUtil.exe"
 
+##TODO add function to handle cmd formated relative paths like %systemroot%, %prgramfiles% etc
 Write-host "Getting Versioninfo for the following file(s): $($filePath)"
 $filesFound = (Get-Item -Path $filePath -ErrorAction SilentlyContinue) #| Select originalFilename,ProductName,ProductVersionraw
 

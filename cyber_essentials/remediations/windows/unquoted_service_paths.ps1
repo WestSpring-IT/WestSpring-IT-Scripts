@@ -81,5 +81,7 @@ foreach ($individualService in $installedServices) {
         }
     }
 }
+
+#TODO: list all services that were changed and their new paths
 Write-Host "Completed Unquoted Service Path Checking" -ForegroundColor Green
 Write-Host "$counter services were identified and remediated" -ForegroundColor Green
