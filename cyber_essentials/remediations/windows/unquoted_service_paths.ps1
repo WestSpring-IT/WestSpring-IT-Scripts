@@ -1,5 +1,139 @@
+<#
+.SYNOPSIS
+Remediates unquoted ImagePath registry entries for automatically-starting Windows services by adding quotes around executable paths that contain spaces.
+
+.DESCRIPTION
+This script scans HKLM:\SYSTEM\CurrentControlSet\Services for services that:
+ - have an ImagePath value,
+ - are configured to start automatically (Start = 2),
+ - contain spaces in the ImagePath, and
+ - do not already have the executable portion fully quoted.
+
+For identified services the script attempts to split the ImagePath into an executable portion and arguments (special-casing common ".exe" and ".sys" patterns), wraps the executable portion in quotes, and writes the new ImagePath back to the service registry key. Actions and results are emitted via write_log_message and Write-Host. A counter of remediated services is maintained.
+
+.PARAMETER None
+This script does not accept parameters. It operates directly on the local machine's registry.
+
+.INPUTS
+None. The script reads registry values directly and does not accept pipeline input.
+
+.OUTPUTS
+- Writes log and informational messages via write_log_message and Write-Host.
+- Updates the ImagePath value in HKLM for affected services.
+
+.REQUIREMENTS
+- Must run with administrative privileges to modify service registry entries under HKLM.
+- A write_log_message function or equivalent must be defined and available in the session.
+- Intended for Windows PowerShell/PowerShell on Windows.
+
+.BEHAVIOR AND LIMITATIONS
+- Only services with Start = 2 (automatic start) are processed.
+- Only ImagePath values containing spaces are considered; paths already enclosed in matching starting and ending quotes are skipped.
+- Parsing logic targets ".exe" and ".sys" occurrences to separate executable path from arguments. Complex ImagePath formats (environment-variable-based paths, UNC paths, nonstandard extensions, nested/escaped quotes, or multiple quoted segments) may not be parsed correctly.
+- The current parsing may be case-sensitive and might mis-handle edge cases; verify results manually after changes.
+- No dry-run/report-only mode is provided in the current implementation; the script updates the registry in-place.
+
+.POTENTIAL RISKS
+- Incorrect parsing and quoting can change service behavior or prevent services from starting. Always test in a non-production environment first.
+- Modifying registry values can be disruptive; back up keys or create a system restore point before running.
+
+.RECOMMENDATIONS
+- Backup affected registry keys or create a system restore point before executing.
+- Run the script from an elevated PowerShell session.
+- Inspect the list of identified services and the new ImagePath values before and after remediation.
+- Consider enhancing the script to:
+    - Normalize case when searching for extensions (.exe/.sys).
+    - Add a dry-run/report-only mode.
+    - Improve parsing for environment variables, UNC paths and more complex quoting scenarios.
+    - Log original and new values to an audit file.
+
+.EXAMPLE
+    .\unquoted_service_paths.ps1
+
+    Scans and remediates unquoted service paths for automatically-starting services on the local machine.
+
+.NOTES
+Author: Fergus Barker
+Date: June 2024
+Version: 1.0
+#>
+
+
+function write_log_message {
+    <#
+.SYNOPSIS
+    Writes a formatted log message to a daily log file and optionally to the console.
+
+.DESCRIPTION
+    The write_log_message function logs messages with a timestamp and severity level.
+    It writes the log entry to a log file located in the user's TEMP directory, named
+    after the script and the current date. Optionally, it can also output the message
+    to the console in a color corresponding to the severity level.
+
+.PARAMETER message
+    The message text to log. This parameter is mandatory.
+
+.PARAMETER level
+    The severity level of the message. Valid values are:
+    - Info (default)
+    - Warning
+    - Error
+    - Success
+
+.PARAMETER writeToConsole
+    If set to $false (default), the message is only written to the log file.
+    If set to $true, the message will also be written to the console with color coding.
+
+.EXAMPLE
+    write_log_message -message "Script started."
+
+    Logs an informational message to the log file.
+
+.EXAMPLE
+    write_log_message -message "Operation completed successfully." -level "Success" -writeToConsole $true
+
+    Logs a success message to the log file and displays it in green in the console.
+
+.EXAMPLE
+    write_log_message -message "An error occurred." -level "Error"
+
+    Logs an error message to the log file in red (if displayed in console).
+
+.NOTES
+    Log files are stored in the TEMP directory with the format:
+    yyyy-MM-dd_<ScriptName>.log
+
+    Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
+#>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$message,
+        [Parameter(Mandatory = $false)]
+        [ValidateSet("Info", "Warning", "Error", "Success")]
+        [string]$level = "Info",
+        [Parameter(Mandatory = $false)]
+        [Boolean]$writeToConsole = $false
+    )
+    $scriptName = $($Script:MyInvocation.MyCommand.Name).TrimEnd(".ps1")
+    $timestamp = Get-Date -Format "yyyy-MM-dd_THHmmss"
+    $logEntry = "[$timestamp] [$level] $message"
+    
+    switch ($level) {
+        "Success" {$consoleColour = "Green"}
+        "Info"    {$consoleColour = "Cyan"}
+        "Warning" {$consoleColour = "Yellow"}
+        "Error"   {$consoleColour = "Red"}
+    }
+    if ($writeToConsole) {
+        Write-Host $logEntry -ForegroundColor $consoleColour
+    }
+    # Append to log file
+    $logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
+    Add-Content -Path $logFilePath -Value $logEntry
+}
+
 $counter = 0
-Write-Host "Starting Unquoted Service Path Checking" -ForegroundColor Green
+write_log_message "Starting Unquoted Service Path Checking" -Level "Info" -writeToConsole $true
 #Collect a list of IndividualServices running on the machine being checked
 $installedServices = Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services"
 #Check each and every service
@@ -70,18 +204,18 @@ foreach ($individualService in $installedServices) {
             $counter++
             Write-Host "-----------------------------------"
             # Add quotes
-            "$($Individualservice.name) was identified with an unquoted path ($imagePathCopy)"
+            write_log_message "$($Individualservice.name) was identified with an unquoted path ($imagePathCopy)" -level "Warning" -writeToConsole $true
             $executables = "`"$executables`""
             $NewImagePath = "$executables$arguments"
             # Change registry path to add the quotes
             $IndividualServicePath = $individualService.Name.Replace("HKEY_LOCAL_MACHINE", "HKLM:")
             # Update the ImagePath
-            "changing to $NewImagePath"
+            write_log_message "changing to $NewImagePath" -level "Info" -writeToConsole $true
             Set-ItemProperty -Path $IndividualServicePath -Name "ImagePath" -Value $newImagePath
         }
     }
 }
 
 #TODO: list all services that were changed and their new paths
-Write-Host "Completed Unquoted Service Path Checking" -ForegroundColor Green
-Write-Host "$counter services were identified and remediated" -ForegroundColor Green
+write_log_message "Completed Unquoted Service Path Checking" -Level "Info" -writeToConsole $true
+write_log_message "$counter services were identified and remediated" -Level "Success" -writeToConsole $true
