@@ -59,7 +59,7 @@ Logs messages with a timestamp and severity level to both the console and the lo
 
 Param(
     [Parameter(Mandatory = $false)]
-    [string]$installString = "QualysCloudAgent.exe CustomerId={4CED42B6-21B2-E6D5-80A3-BF1F6D2597F6} ActivationId={58082617-84FB-4800-A8B1-57DCD97FD709} WebServiceUri=https://qagpublic.qg1.apps.qualys.co.uk/CloudAgent/", #"{[InstallString]}",
+    [string]$installString = "QualysCloudAgent.exe CustomerId={58905ab3-6cfb-dbf5-8137-66036b4c2f99} ActivationId={faafc6d8-2034-432c-be69-2996a806b8c1} WebServiceUri=https://qagpublic.qg1.apps.qualys.co.uk/CloudAgent/ ", #"{[InstallString]}",
     [Parameter(Mandatory = $false)]
     [string]$Uri = "https://wsprodfileuksouth.blob.core.windows.net/clients/qualys-agent-installers/QualysCloudAgent-Windows.exe"
 )
@@ -88,7 +88,7 @@ if ($installString -match 'WebServiceUri=([^\s]+)') {
 }
 
 
-# Function Definitions
+## Function Definitions ##
 function write_log_message {
     <#
 .SYNOPSIS
@@ -161,7 +161,129 @@ function write_log_message {
     $logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
     Add-Content -Path $logFilePath -Value $logEntry
 }
+function download_file {
+    <#
+        .SYNOPSIS
+        Downloads a file from a specified URI with retry logic and returns download details.
 
+        .DESCRIPTION
+        The download_file function downloads a file from the provided URI to a specified fullPath path.
+        It follows redirects to get the actual download URL, supports retrying the download on failure,
+        and returns an object containing file details such as name, fullPath, size, and download time.
+
+        .PARAMETER Uri
+        The URI of the file to download. This parameter is mandatory.
+
+        .PARAMETER fileName
+        The name of the downloaded file. If not specified, defaults to the name extracted from the URI.
+
+        .PARAMETER fullPath
+        The path where the downloaded file will be saved. If not specified, defaults to the TEMP path.
+
+        .PARAMETER MaxTries
+        The maximum number of download attempts in case of failure. Defaults to 3.
+
+        .PARAMETER ProgressPreference
+        Specifies how progress is displayed during download. Defaults to "SilentlyContinue".
+
+        .OUTPUTS
+        [PSCustomObject]
+        Returns an object with the following properties:
+        - fileName: Name of the downloaded file.
+        - fullPath: Path of the downloaded file.
+        - fileSize: Size of the downloaded file in megabytes.
+        - totalTime: Time taken to complete the download in seconds.
+
+        .EXAMPLE
+        download_file -Uri "https://example.com/file.zip" -fullPath "C:\Downloads\file.zip"
+
+        .EXAMPLE
+        download_file -Uri "https://example.com/file.zip"
+
+        .EXAMPLE
+        $result = download_file -Uri "https://example.com/file.zip" -MaxTries 5
+        Write-Host "Downloaded file size: $($result.fileSize) MB"
+
+        .NOTES
+        Requires PowerShell 5.0 or later.
+        #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Uri,
+        [string]$fileName,
+        [string]$filePath = "$env:TEMP",
+        [int]$MaxTries = 3,
+        [string]$ProgressPreference = "SilentlyContinue"
+    )
+
+    # If no filename provided, extract from final redirected URL
+    if (-not $fileName) {
+        $Link = [System.Net.HttpWebRequest]::Create($Uri).GetResponse().ResponseUri.AbsoluteUri
+        Write-Host $link #debug
+        $fileName = [uri]::UnescapeDataString($Link) | Split-Path -Leaf
+    }
+    # Create target path if it doesn't exist
+    if (!(Test-Path -Path $filePath)) {
+        try {
+            New-Item -ItemType Directory -Path $filePath | Out-Null
+        }
+        catch {
+            Write-Host "Failed to create path $($filePath): $($_.Exception.Message)" -ForegroundColor Red
+            return $false
+        }
+    }
+
+    # Ensure fullPath uses the provided or derived filename
+    $fullPath = Join-Path -Path $filePath -ChildPath $fileName
+
+    # Set TLS 1.2 for secure downloads
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    $attempt = 0
+    $success = $false
+    $startTime = Get-Date -Format "HH:mm:ss"
+
+
+    
+    Write-Host "Starting download of $fileName from $Uri to $fullPath" -ForegroundColor Cyan
+    while (-not $success -and $attempt -lt $MaxTries) {
+        try {
+            $attempt++
+            Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $fullPath -ErrorAction Stop
+            Write-Host "Download succeeded on attempt $($attempt): $fullPath" -ForegroundColor Green
+            $success = $true
+        }
+        catch {
+            Write-Host "Download failed on attempt $($attempt): $($_.Exception.Message)" -ForegroundColor Yellow
+            Start-Sleep -Seconds 2
+        }
+    }
+    $endTime = Get-Date -Format "HH:mm:ss"
+    $totalTime = (New-TimeSpan -Start $startTime -End $endTime).TotalSeconds
+    if (-not $success) {
+        Write-Host "Failed to download file after $MaxTries attempts." -ForegroundColor Red
+        $result = [PSCustomObject]@{
+            success   = $false
+            fileName  = $fileName
+            fullPath  = $fullPath
+            fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
+            totalTime = [math]::Round($totalTime, 2)
+            attempt   = $attempt
+        } 
+    }
+    else {
+        $result = [PSCustomObject]@{
+            success   = $true
+            fileName  = $fileName
+            fullPath  = $fullPath
+            fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
+            totalTime = [math]::Round($totalTime, 2)
+            attempt   = $attempt
+        }
+    }
+    return $result
+
+}
+## /Function Definitions ##
 $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
 $agentInfo = Get-ItemProperty -Path "HKLM:\SOFTWARE\Qualys" -ErrorAction SilentlyContinue
 
@@ -189,39 +311,24 @@ write_log_message "Bypassing execution policy for this process" "INFO" -writeToC
 Set-ExecutionPolicy Bypass -Scope Process -Force
 
 # Download the Qualys Agent
-$downloadSuccess = $false
-try {
-    write_log_message "Downloading the Qualys Agent from $Uri" -level "INFO" -writeToConsole $true
-    Invoke-RestMethod -Uri $Uri -OutFile $InstallerPath
-    $downloadSuccess = $true
-}
-catch {
-    write_log_message "Failed to download the Qualys Agent: $($_.Exception.Message)" "ERROR" -writeToConsole $true
-    if ($_.Exception.Response) {
-        write_log_message "Status Code: $($_.Exception.Response.StatusCode.value__)" "ERROR" -writeToConsole $true
-        write_log_message "Status Description: $($_.Exception.Response.StatusDescription)" "ERROR" -writeToConsole $true
-    }
-    else {
-        write_log_message "No Response object available in the exception." "ERROR" -writeToConsole $true
-    }
-    write_log_message "Stack Trace: $($_.Exception.StackTrace)" "ERROR" -writeToConsole $true
-    Exit 1
-}
+write_log_message "Downloading the Qualys Agent from $Uri" -level "INFO" -writeToConsole $true
+$qualysDownload = download_file -Uri $Uri -MaxTries 3 -ProgressPreference "SilentlyContinue"
 
-If ($downloadSuccess -and (Test-Path $InstallerPath)) {
-    write_log_message "The file, $InstallerName, successfully downloaded" -level "SUCCESS" -writeToConsole $true
+
+If ($qualysDownload.success) {
+    write_log_message "The file, $($qualysDownload.fileName), successfully downloaded" -level "SUCCESS" -writeToConsole $true
     $installString = "CustomerId={$($customerID)} ActivationId={$($activationID)} WebServiceUri=$($webServiceUri)"    # Install Qualys Agent
     write_log_message "CustomerID: $($customerID)" -level "INFO" -writeToConsole $true
     write_log_message "ActivationID: $($activationID)" -level "INFO" -writeToConsole $true
     write_log_message "WebServiceUri: $($webServiceUri)" -level "INFO" -writeToConsole $true
     write_log_message "Windows Version: $($windowsVersion)" -level "INFO" -writeToConsole $true
-    write_log_message "Installing the Qualys Agent from $InstallerPath" -level "INFO" -writeToConsole $true
+    write_log_message "Installing the Qualys Agent from $($qualysDownload.fullPath)" -level "INFO" -writeToConsole $true
     try {
         write_log_message "Invoking the following command: cmd.exe /c $($InstallerPath) $($installString)" "INFO" -writeToConsole $true
-        Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$InstallerPath $installString`"" -Wait -NoNewWindow -ErrorAction Stop
+        $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$($qualysDownload.fullPath) $installString`"" -Wait -NoNewWindow -ErrorAction Stop
         Start-Sleep -Seconds 5
         $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
-        if ($msiProduct) {
+        if ($msiProduct-and $process.ExitCode -eq 0) {
             $installSuccess = $true
             write_log_message "Qualys Agent ($($msiProduct.Version)) installation completed" -level "SUCCESS" -writeToConsole $true
             Start-Sleep -Seconds 5
@@ -234,7 +341,7 @@ If ($downloadSuccess -and (Test-Path $InstallerPath)) {
         
     }
     catch {
-        write_log_message "Failed to install the Qualys Agent: $($_.Exception.Message)" -level "ERROR" -writeToConsole $true
+        write_log_message "Failed to install the Qualys Agent, ExitCode $($process.ExitCode): $($_.Exception.Message)" -level "ERROR" -writeToConsole $true
         write_log_message "Stack Trace: $($_.Exception.StackTrace)" -level "ERROR" -writeToConsole $true
         Exit 1
     }
@@ -246,6 +353,7 @@ If ($downloadSuccess -and (Test-Path $InstallerPath)) {
         Remove-Item -Path $InstallerPath -ErrorAction Stop
         If (!(Test-Path $InstallerPath)) {
             write_log_message "Installation files successfully removed" -level "SUCCESS" -writeToConsole $true
+            Exit $process.ExitCode
         }
     }
     catch {
