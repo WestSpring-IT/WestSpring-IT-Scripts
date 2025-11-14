@@ -1,18 +1,50 @@
-$filePath = "C:\IntuneWIN\IntuneWinAppUtil.exe"
+param(
+    [Parameter(Mandatory = $false, ValueFromRemainingArguments = $true)]
+    [string[]]$filePath = "{[filePaths]}"
+)
 
-##TODO add function to handle cmd formated relative paths like %systemroot%, %prgramfiles% etc
-Write-host "Getting Versioninfo for the following file(s): $($filePath)"
-$filesFound = (Get-Item -Path $filePath -ErrorAction SilentlyContinue) #| Select originalFilename,ProductName,ProductVersionraw
+function expand_cmd_path {
+    param([string]$Path)
+    if (-not $Path) { return $Path }
+    $p = $Path.Trim()
+    # Expand %ENV% style variables
+    try {
+        $expanded = [Environment]::ExpandEnvironmentVariables($p)
+    }
+    catch {
+        $expanded = $p
+    }
+    # Expand leading ~ to user profile
+    if ($expanded -like '~*') {
+        $expanded = $expanded -replace '^~', $env:USERPROFILE
+    }
+    return $expanded
+}
+
+$expandedPaths = @()
+foreach ($p in $filePath) {
+    $ep = expand_cmd_path -Path $p
+    if ($ep) { $expandedPaths += $ep }
+}
+
+Write-Host "Getting Versioninfo for the following expanded path(s): $($expandedPaths -join ', ')"
+
+# Resolve to files using Get-ChildItem so wildcards are handled and multiple matches returned
+$filesFound = @()
+foreach ($p in $expandedPaths) {
+    try {
+        $items = Get-ChildItem -Path $p -ErrorAction SilentlyContinue -Force
+        if ($items) { $filesFound += $items | Where-Object { -not $_.PSIsContainer } }
+    } catch {}
+}
 
 if ($filesFound.Count -lt 1) {
-    Write-host "No files found for the given file path: $($filePath)"
+    Write-Host "No files found for the given file path(s): $($filePath -join ', ')"
 } else {
     foreach ($x in $filesFound) {
         Write-host "----"
         Write-Host "File: $($x.Versioninfo.OriginalFilename)"
-        write-host "File location: $($x.Versioninfo.FileName)"
-        write-host "Version info: $($x.Versioninfo.FileVersion)"
-
+        Write-Host "File location: $($x.Versioninfo.FileName)"
+        Write-Host "Version info: $($x.Versioninfo.FileVersion)"
     }
 }
-#Write-host "Hostname: "(hostname)

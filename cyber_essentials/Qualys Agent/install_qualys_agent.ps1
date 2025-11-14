@@ -59,7 +59,7 @@ Logs messages with a timestamp and severity level to both the console and the lo
 
 Param(
     [Parameter(Mandatory = $false)]
-    [string]$installString = "QualysCloudAgent.exe CustomerId={58905ab3-6cfb-dbf5-8137-66036b4c2f99} ActivationId={faafc6d8-2034-432c-be69-2996a806b8c1} WebServiceUri=https://qagpublic.qg1.apps.qualys.co.uk/CloudAgent/ ", #"{[InstallString]}",
+    [string]$installString = "{[InstallString]}",
     [Parameter(Mandatory = $false)]
     [string]$Uri = "https://wsprodfileuksouth.blob.core.windows.net/clients/qualys-agent-installers/QualysCloudAgent-Windows.exe"
 )
