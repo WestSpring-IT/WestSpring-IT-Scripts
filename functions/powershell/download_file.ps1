@@ -47,6 +47,7 @@ function download_file {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Uri,
+        [bool]$whatIf = $false,
         [string]$fileName,
         [string]$filePath = "$env:TEMP",
         [int]$MaxTries = 3,
@@ -82,41 +83,50 @@ function download_file {
 
     
     Write-Host "Starting download of $fileName from $Uri to $fullPath" -ForegroundColor Cyan
-    while (-not $success -and $attempt -lt $MaxTries) {
-        try {
-            $attempt++
-            Invoke-WebRequest -Uri $Uri -OutFile $fullPath -ErrorAction Stop
-            Write-Host "Download succeeded on attempt $($attempt): $fullPath" -ForegroundColor Green
-            $success = $true
+    if ($whatIf) {
+        Write-Host "WhatIf is enabled. Download simulation complete." -ForegroundColor Yellow
+        $success = $true
+            } else {
+            while (-not $success -and $attempt -lt $MaxTries) {
+                try {
+                    $attempt++
+                    Invoke-WebRequest -Uri $Uri -OutFile $fullPath -ErrorAction Stop
+                    Write-Host "Download succeeded on attempt $($attempt): $fullPath" -ForegroundColor Green
+                    $success = $true
+                }
+                catch {
+                    Write-Host "Download failed on attempt $($attempt): $($_.Exception.Message)" -ForegroundColor Yellow
+                    Start-Sleep -Seconds 2
+                }
+            }
         }
-        catch {
-            Write-Host "Download failed on attempt $($attempt): $($_.Exception.Message)" -ForegroundColor Yellow
-            Start-Sleep -Seconds 2
-        }
-    }
-    $endTime = Get-Date -Format "HH:mm:ss"
-    $totalTime = (New-TimeSpan -Start $startTime -End $endTime).TotalSeconds
-    if (-not $success) {
-        Write-Host "Failed to download file after $MaxTries attempts." -ForegroundColor Red
-        $result = [PSCustomObject]@{
-            success   = $false
-            fileName  = $fileName
-            fullPath  = $fullPath
-            fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
-            totalTime = [math]::Round($totalTime, 2)
-            attempt   = $attempt
-        } 
-    }
-    else {
-        $result = [PSCustomObject]@{
-            success   = $true
-            fileName  = $fileName
-            fullPath  = $fullPath
-            fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
-            totalTime = [math]::Round($totalTime, 2)
-            attempt   = $attempt
-        }
-    }
-    return $result
+    
 
-}
+        $endTime = Get-Date -Format "HH:mm:ss"
+        $totalTime = (New-TimeSpan -Start $startTime -End $endTime).TotalSeconds
+        if (-not $success) {
+            Write-Host "Failed to download file after $MaxTries attempts." -ForegroundColor Red
+            $result = [PSCustomObject]@{
+                success   = $false
+                fileName  = $fileName
+                fullPath  = $fullPath
+                fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
+                totalTime = [math]::Round($totalTime, 2)
+                attempt   = $attempt
+            } 
+        }
+        else {
+            $result = [PSCustomObject]@{
+                success   = $true
+                fileName  = $fileName
+                fullPath  = $fullPath
+                fileSize  = [math]::Round((Get-Item $fullPath).Length / 1MB, 4)
+                totalTime = [math]::Round($totalTime, 2)
+                attempt   = $attempt
+            }
+        }
+        return $result
+    }
+
+
+$result = download_file -Uri "https://dl.duosecurity.com/duo-win-login-latest.exe" -whatIf $true
