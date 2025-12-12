@@ -2,9 +2,18 @@
 
 # Usage: configure_maclogon.sh [--pkg /path/to/pkg] [--ikey IKEY] [--skey SKEY] [--api HOST] [--fail-open true|false] [--smartcard-bypass true|false] [--auto-push true|false] [--install true|false]
 # If any of ikey/skey/api are omitted they will be prompted for interactively.
+# You can hardcode defaults for IKEY, SKEY, and API by editing the DEFAULT_* variables below.
 # Boolean options can be provided or will be prompted (with defaults where appropriate).
 
-version="2.0.5"
+# Allows the overriding of the version to download and use. If not provided, latest version is used.
+version=""
+
+# Hardcoded defaults. Set these to your values to avoid interactive prompts.
+# WARNING: Storing secrets in plaintext in scripts can be a security risk. Consider
+# using environment variables or secure storage when possible.
+DEFAULT_IKEY="{[DUO_INTEGRATION_KEY]}"
+DEFAULT_SKEY="{[DUO_SECRET_KEY]}"
+DEFAULT_API="{[DUO_API_HOST]}"
 
 # echo "Duo Security Mac Logon configuration tool v${version}."
 # echo "See https://duo.com/docs/macos for documentation"
@@ -38,12 +47,13 @@ Usage: $0 [options]
 Options:
     --version-override VERSION     Specify version string for output package (default: latest)
     --pkg PATH                     Path to MacLogon-NotConfigured-x.x.pkg (optional)
+    (Defaults can be set by editing DEFAULT_IKEY, DEFAULT_SKEY, DEFAULT_API near the top of this script.)
     --ikey IKEY                    Integration key (IKEY)
     --skey SKEY                    Secret key (SKEY)
     --api HOST                     API hostname
     --fail-open true|false         Fail open (default: false)
     --smartcard-bypass true|false  Smartcard bypass (default: false)
-    --auto-push true|false         Auto push (no default; will prompt if omitted)
+    --auto-push true|false         Auto push (default: true)
     --install true|false           Install after configuring (default: false)
     -h, --help                     Show this help
 EOF
@@ -74,9 +84,9 @@ if [[ -n "${version:-}" ]]; then
         exit 1
     fi
     echo "Using version override: ${version}"
-    DUO_URL="https://dl.duosecurity.com/MacLogon-${version}.pkg"
+    DUO_URL="https://dl.duosecurity.com/MacLogon-${version}.zip"
 else
-    DUO_URL="https://dl.duosecurity.com/MacLogon-latest.pkg"
+    DUO_URL="https://dl.duosecurity.com/MacLogon-latest.zip"
 fi
 
 # Download DUO MacLogon package if not already present
@@ -109,6 +119,11 @@ if [ ! -f "${pkg_path}" ]; then
 fi
 
 # Prompt for required values if not provided
+# Apply hardcoded defaults (if no flags provided; flags override defaults)
+ikey="${ikey:-$DEFAULT_IKEY}"
+skey="${skey:-$DEFAULT_SKEY}"
+api_hostname="${api_hostname:-$DEFAULT_API}"
+
 if [[ -z "${ikey:-}" ]]; then
     echo -n "Enter ikey: "
     read -r ikey
@@ -149,15 +164,16 @@ validate_bool_or_prompt() {
     fi
 }
 
-# For fail_open and smartcard_bypass default to false when prompting
+# For fail_open and smartcard_bypass default to false when omitted
 if [[ -n "${fail_open:-}" ]]; then
     if ! [[ "$fail_open" == "true" || "$fail_open" == "false" ]]; then
         echo "Invalid --fail-open value: $fail_open"
         exit 1
     fi
 else
-    echo -n "Should fail open (true or false) [default: false]: "
-    fail_open=$(read_bool_default_false)
+    # Default to false if the flag is omitted
+    fail_open="false"
+    echo "Fail open not provided; defaulting to 'false'."
 fi
 
 if [[ -n "${smartcard_bypass:-}" ]]; then
@@ -166,19 +182,21 @@ if [[ -n "${smartcard_bypass:-}" ]]; then
         exit 1
     fi
 else
-    echo -n "Should bypass 2FA when using smartcard (true or false) [default: false]: "
-    smartcard_bypass=$(read_bool_default_false)
+    # Default to false if the flag is omitted
+    smartcard_bypass="false"
+    echo "Smartcard bypass not provided; defaulting to 'false'."
 fi
 
-# auto_push: if provided validate; otherwise prompt (no default)
+# auto_push: if provided validate; otherwise default to true
 if [[ -n "${auto_push:-}" ]]; then
     if ! [[ "$auto_push" == "true" || "$auto_push" == "false" ]]; then
         echo "Invalid --auto-push value: $auto_push"
         exit 1
     fi
 else
-    echo -n "Should auto push if possible (true or false): "
-    auto_push=$(read_bool)
+    # Default auto_push to true when omitted
+    auto_push="true"
+    echo "Auto-push not provided; defaulting to 'true'."
 fi
 
 pkg_dir=$(dirname "${pkg_path}")
@@ -213,8 +231,9 @@ if [[ -n "${install_pkg:-}" ]]; then
         exit 1
     fi
 else
-    echo -n "Should the MacLogon package be installed now? (true or false): "
-    install_pkg=$(read_bool)
+    # Default auto_push to true when omitted
+    install_pkg="true"
+    echo "Install not provided; defaulting to 'true'."
 fi
 
 echo -e "Done! The package ${out_pkg} has been configured for your use."

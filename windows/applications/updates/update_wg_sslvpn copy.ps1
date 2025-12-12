@@ -201,7 +201,7 @@ function write_log_message {
     Add-Content -Path $logFilePath -Value $logEntry
 }
 
-# normalize forceInstall parameter
+
 if ($forceInstall -like "yes" -or $forceInstall -like "y") {
         $forceInstallFlag = $true
     } else {
@@ -232,15 +232,6 @@ if ($forceInstallFlag) {
     $appRunning = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Name -like "wgsslvpnc" }
     $NetAdapter = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.InterfaceDescription -eq "TAP-Windows Adapter V9" }
 
-     # Disable TAP adapter if active
-    if ($NetAdapter -and $NetAdapter.Status -eq "Up") {
-        write_log_message -message "TAP-Windows Adapter V9 is active. Disabling adapter before download." -level "Warning" -writeToConsole $true
-        Disable-NetAdapter -Name $NetAdapter.Name -Confirm:$false -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 10
-    } else {
-        write_log_message -message "TAP-Windows Adapter V9 not present or already down; no adapter action required." -level "Info" -writeToConsole $true
-    }
-
     # Stop client (up to 3 attempts: graceful then forced)
     if ($null -ne $appRunning) {
         write_log_message -message "WatchGuard SSL VPN Client is currently running. Attempting to stop (up to 3 attempts)." -level "Warning" -writeToConsole $true
@@ -267,7 +258,16 @@ if ($forceInstallFlag) {
         write_log_message -message "WatchGuard SSL VPN Client not running; no stop required." -level "Info" -writeToConsole $true
     }
 
-       $preppedForInstall = $true
+    # Disable TAP adapter if active
+    if ($NetAdapter -and $NetAdapter.Status -eq "Up") {
+        write_log_message -message "TAP-Windows Adapter V9 is active. Disabling adapter before download." -level "Warning" -writeToConsole $true
+        Disable-NetAdapter -Name $NetAdapter.Name -Confirm:$false -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 5
+    } else {
+        write_log_message -message "TAP-Windows Adapter V9 not present or already down; no adapter action required." -level "Info" -writeToConsole $true
+    }
+
+    $preppedForInstall = $true
 }
 
 # download installer
@@ -306,14 +306,70 @@ $arguments = '/silent /verysilent'
 $process = $null
 
 if ($installRequired) {
-    $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -Wait -PassThru -ErrorAction SilentlyContinue
+    if ($NetAdapter -and $NetAdapter.Status -eq "Up") {
+        if ($forceInstallFlag) {
+            write_log_message -message "TAP-Windows Adapter V9 is currently active. Disabling the network adapter before installation (forced)." -level "Warning" -writeToConsole $true
+            Disable-NetAdapter -Name $NetAdapter.Name -Confirm:$false -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+        } else {
+            write_log_message -message "TAP-Windows Adapter V9 is active but force install not requested; skipping adapter disable." -level "Info" -writeToConsole $true
+        }
+    } else {
+        write_log_message -message "TAP-Windows Adapter V9 is not active or not present. No action needed." -level "Info" -writeToConsole $true
+    }
+
+    if ($null -eq $appRunning) {
+        write_log_message -message "WatchGuard SSL VPN Client is not running. Proceeding with installation." -level "Info" -writeToConsole $true
+        $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -PassThru -Wait -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 60
+    } else {
+        write_log_message -message "WatchGuard SSL VPN Client is currently running." -level "Warning" -writeToConsole $true
+        if ($forceInstallFlag) {
+                write_log_message -message "Stopping the application for installation (forced)." -level "Warning" -writeToConsole $true
+                # Attempt to stop the running process up to 3 times before failing.
+                $stopAttempt = 0
+                $maxAttempts = 3
+                $stopped = $false
+                while ($stopAttempt -lt $maxAttempts) {
+                    $stopAttempt++
+                    if ($stopAttempt -eq 1) {
+                        # First attempt: graceful stop
+                        try { Stop-Process -Id $appRunning.Id -ErrorAction SilentlyContinue } catch {}
+                    } else {
+                        # Subsequent attempts: force stop
+                        try { Stop-Process -Id $appRunning.Id -Force -ErrorAction SilentlyContinue } catch {}
+                    }
+                    Start-Sleep -Seconds 5
+                    $appRunning = Get-Process -Id $appRunning.Id -ErrorAction SilentlyContinue
+                    if (-not $appRunning) { $stopped = $true; break }
+                }
+                if (-not $stopped) {
+                    write_log_message -message "Failed to stop WatchGuard SSL VPN Client after $maxAttempts attempts. Aborting installation." -level "Error" -writeToConsole $true
+                    $installRequired = $false
+                } else {
+                    write_log_message -message "WatchGuard SSL VPN Client stopped successfully." -level "Success" -writeToConsole $true
+                    Start-Sleep -Seconds 5
+                    write_log_message -message "Installing WatchGuard SSL VPN Client." -level "Info" -writeToConsole $true
+                    $process = Start-Process -FilePath $wgDownloadResult.fullPath -ArgumentList $arguments -PassThru -Wait -ErrorAction SilentlyContinue
+                }
+        } else {
+            write_log_message -message "Not forcing application stop because force install not requested; skipping installation." -level "Warning" -writeToConsole $true
+            $installRequired = $false
+        }
+    }
+} else {
+    write_log_message -message "Installation skipped (already up to date). Continuing with WebView per-user copy." -level "Info" -writeToConsole $true
 }
-    
+
 if ($process -and $process.HasExited) {
     if ($process.ExitCode -eq 0) {
         write_log_message -message "WatchGuard SSL VPN Client installation process completed with exit code 0." -level "Success" -writeToConsole $true
     } else {
         write_log_message -message "WatchGuard SSL VPN Client installation process failed with exit code $($process.ExitCode)." -level "Error" -writeToConsole $true
+    }
+} else {
+    if ($installRequired) {
+        write_log_message -message "Installer process information not available." -level "Warning" -writeToConsole $true
     }
 }
 

@@ -61,6 +61,9 @@ Param(
     [Parameter(Mandatory = $false)]
     [string]$installString = "{[InstallString]}",
     [Parameter(Mandatory = $false)]
+    [ValidateSet('yes','y','no','n')]
+    [string]$forceInstall = "{[ForceInstall]}",
+    [Parameter(Mandatory = $false)]
     [string]$Uri = "https://wsprodfileuksouth.blob.core.windows.net/clients/qualys-agent-installers/QualysCloudAgent-Windows.exe"
 )
 #$LogFile = "$env:TEMP\QualysAgentInstall.log"
@@ -284,6 +287,21 @@ function download_file {
 
 }
 ## /Function Definitions ##
+
+# Normalize forceInstall parameter into boolean flag
+$forceInstallFlag = $false
+if ($null -ne $forceInstall) {
+    try {
+        if ($forceInstall -is [string]) {
+            if ($forceInstall.ToLower() -in @('yes','y')) { $forceInstallFlag = $true }
+        } elseif ($forceInstall -is [bool]) {
+            $forceInstallFlag = [bool]$forceInstall
+        }
+    } catch {
+        $forceInstallFlag = $false
+    }
+}
+
 $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
 $agentInfo = Get-ItemProperty -Path "HKLM:\SOFTWARE\Qualys" -ErrorAction SilentlyContinue
 
@@ -291,17 +309,55 @@ if ($msiProduct) {
     write_log_message "Qualys Agent is already installed. Version: $($msiProduct.Version)" "INFO" -writeToConsole $true
     write_log_message "Configured CustomerID: $($agentInfo.CustomerID)" "INFO" -writeToConsole $true
     write_log_message "Configured ActivationID: $($agentInfo.ActivationID)" "INFO" -writeToConsole $true
-    if (($agentInfo.customerID -eq $customerID) -and ($agentInfo.activationID -eq $activationID)) {
-        write_log_message "The installed Qualys Agent matches the provided CustomerID and ActivationID. No action needed." "INFO" -writeToConsole $true
-        Exit 0
+
+    $installedMatches = ($agentInfo.customerID -eq $customerID) -and ($agentInfo.activationID -eq $activationID)
+    if ($installedMatches) {
+        write_log_message "The installed Qualys Agent matches the provided CustomerID and ActivationID." "INFO" -writeToConsole $true
+        if (-not $forceInstallFlag) {
+            write_log_message "No action requested. Exiting." "INFO" -writeToConsole $true
+            Exit 0
+        } else {
+            write_log_message "Force install requested: will uninstall existing agent and proceed to install." "WARNING" -writeToConsole $true
+        }
     } else {
         write_log_message "The installed Qualys Agent does not match the provided CustomerID and/or ActivationID." "WARNING" -writeToConsole $true
         write_log_message " -- Configured customerID: $($agentInfo.customerID)" "WARNING" -writeToConsole $true
         write_log_message " -- Configured activationID: $($agentInfo.activationID)" "WARNING" -writeToConsole $true
+        if (-not $forceInstallFlag) {
+            write_log_message "No force requested; leaving existing agent in place and exiting." "INFO" -writeToConsole $true
+            write_log_message "If you want to replace the agent, re-run with -forceInstall yes" "INFO" -writeToConsole $true
+            Exit 0
+        } else {
+            write_log_message "Force install requested: will uninstall existing agent and proceed to install." "WARNING" -writeToConsole $true
+        }
     }
-    write_log_message "If the endpoint needs to be re-registered, please uninstall the existing agent first." "INFO" -writeToConsole $true
-    write_log_message "Uninstall command: msiexec /X$($msiProduct.PSChildName) /qn" "INFO" -writeToConsole $true
-    Exit 0
+
+    # Uninstall existing agent before proceeding
+    try {
+        $productCode = $msiProduct.PSChildName
+        if ($productCode) {
+            write_log_message "Uninstalling existing Qualys Agent (ProductCode: $productCode)" "INFO" -writeToConsole $true
+            $uninstallArgs = "/x$productCode /qn /norestart"
+            $uninstall = Start-Process -FilePath "msiexec.exe" -ArgumentList $uninstallArgs -Wait -PassThru -ErrorAction Stop
+            if ($uninstall.ExitCode -eq 0) {
+                write_log_message "Uninstall completed successfully." "SUCCESS" -writeToConsole $true
+            } else {
+                write_log_message "Uninstall returned exit code $($uninstall.ExitCode). Aborting." "ERROR" -writeToConsole $true
+                Exit 1
+            }
+        } else {
+            write_log_message "Could not determine product code for uninstall. Aborting." "ERROR" -writeToConsole $true
+            Exit 1
+        }
+    }
+    catch {
+        write_log_message "Failed to uninstall existing Qualys Agent: $($_.Exception.Message)" "ERROR" -writeToConsole $true
+        Exit 1
+    }
+
+    # Refresh state
+    Start-Sleep -Seconds 5
+    $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
 }
 
 # Temporarily bypass the execution policy for this process to ensure the script runs without being blocked.
