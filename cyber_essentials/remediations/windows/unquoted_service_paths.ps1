@@ -11,8 +11,8 @@ This script scans HKLM:\SYSTEM\CurrentControlSet\Services for services that:
 
 For identified services the script attempts to split the ImagePath into an executable portion and arguments (special-casing common ".exe" and ".sys" patterns), wraps the executable portion in quotes, and writes the new ImagePath back to the service registry key. Actions and results are emitted via write_log_message and Write-Host. A counter of remediated services is maintained.
 
-.PARAMETER None
-This script does not accept parameters. It operates directly on the local machine's registry.
+.PARAMETER ProcessAllServices
+This script reads the value set by the RMM in the variable `${Process All Services}` (string). Supported true values include: `1`, `y`, `yes`, `true` (case-insensitive). Supported false values include: `0`, `n`, `no`, `false`. If the variable is not set, the script defaults to processing only automatic services (`Start = 2`).
 
 .INPUTS
 None. The script reads registry values directly and does not accept pipeline input.
@@ -57,7 +57,6 @@ Author: Fergus Barker
 Date: June 2024
 Version: 1.0
 #>
-
 
 function write_log_message {
     <#
@@ -132,8 +131,42 @@ function write_log_message {
     Add-Content -Path $logFilePath -Value $logEntry
 }
 
+function ConvertTo-BoolFromString {
+    param([Parameter(Mandatory=$true)][string]$Value)
+    if (-not $Value) { return $false }
+    switch ($Value.Trim().ToLower()) {
+        '1'     { return $true }
+        'y'     { return $true }
+        'yes'   { return $true }
+        'true'  { return $true }
+        't'     { return $true }
+        'on'    { return $true }
+        '0'     { return $false }
+        'n'     { return $false }
+        'no'    { return $false }
+        'false' { return $false }
+        'f'     { return $false }
+        'off'   { return $false }
+        default {
+            try { return [bool]::Parse($Value) } catch { return $false }
+        }
+    }
+}
+
+# Read RMM-provided variable `${Process All Services}` and normalize to boolean
+$ProcessAllServicesEffective = $false
+try {
+    $rmmValue = ${Process All Services}
+} catch {
+    $rmmValue = $null
+}
+if ($rmmValue) {
+    $ProcessAllServicesEffective = ConvertTo-BoolFromString -Value ([string]$rmmValue)
+}
+
 $counter = 0
 write_log_message "Starting Unquoted Service Path Checking" -Level "Info" -writeToConsole $true
+if ($ProcessAllServicesEffective) { write_log_message "Processing all services regardless of 'Start' value." -Level "Info" -writeToConsole $true }
 #Collect a list of IndividualServices running on the machine being checked
 $installedServices = Get-ChildItem "HKLM:\SYSTEM\CurrentControlSet\Services"
 #Check each and every service
@@ -151,10 +184,12 @@ foreach ($individualService in $installedServices) {
         continue
     }
 
-    # Only process services set to auto start (Start = 2)
+    # Only process services set to auto start (Start = 2), unless $ProcessAllServices is set
     $startValue = $individualService.GetValue("Start")
-    if ($startValue -ne 2) {
-        continue
+    if (-not $ProcessAllServicesEffective) {
+        if ($startValue -ne 2) {
+            continue
+        }
     }
 
     #Copy the image path variable so we can work with it in the scipt
@@ -212,6 +247,7 @@ foreach ($individualService in $installedServices) {
             # Update the ImagePath
             write_log_message "changing to $NewImagePath" -level "Info" -writeToConsole $true
             Set-ItemProperty -Path $IndividualServicePath -Name "ImagePath" -Value $newImagePath
+            write_log_message "$($Individualservice.name) has been remediated to use quoted path ($NewImagePath)" -level "Success" -writeToConsole $true
         }
     }
 }

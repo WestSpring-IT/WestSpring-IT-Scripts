@@ -1,4 +1,5 @@
-<#
+function install_required_modules {
+        <#
 .SYNOPSIS
 Installs a list of required PowerShell modules if they are not already present.
 
@@ -17,7 +18,6 @@ An array of module names to check and install if they are not already available.
 install_required_modules -modules @("PSReadLine", "Az.Accounts")
 
 #>
-function install_required_modules {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true)]

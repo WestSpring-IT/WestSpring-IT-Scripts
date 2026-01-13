@@ -87,13 +87,75 @@ function expand_cmd_path {
     }
     return $expanded
 }
+function test_protected_path {
+    <#
+    .SYNOPSIS
+        Check if provided path(s) are inside protected/system locations (e.g. C:\Windows).
+    .OUTPUTS
+        Array of protected paths that were detected (empty if none).
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string[]]$Path
+    )
+
+    # Common protected locations (expanded)
+    $protectedBases = @()
+    if ($env:SystemRoot) { $protectedBases += (Get-Item -Path $env:SystemRoot -ErrorAction SilentlyContinue).FullName }
+    if ($env:ProgramFiles) { $protectedBases += (Get-Item -Path $env:ProgramFiles -ErrorAction SilentlyContinue).FullName }
+    if (${env:ProgramFiles(x86)}) { $protectedBases += (Get-Item -Path ${env:ProgramFiles(x86)} -ErrorAction SilentlyContinue).FullName }
+    if ($env:ProgramW6432) { $protectedBases += (Get-Item -Path $env:ProgramW6432 -ErrorAction SilentlyContinue).FullName }
+
+    $protectedBases = $protectedBases | Where-Object { $_ } | ForEach-Object { $_.TrimEnd('\') + '\' } | Select-Object -Unique
+
+    $detectedProtectedPaths = @()
+    foreach ($p in $Path) {
+        $exp = expand_cmd_path -Path $p
+        # Try to resolve items (supports wildcards)
+        $items = Get-ChildItem -Path $exp -Force -ErrorAction SilentlyContinue
+        if ($items) {
+            foreach ($it in $items) {
+                foreach ($base in $protectedBases) {
+                    if ($it.FullName.StartsWith($base, [System.StringComparison]::InvariantCultureIgnoreCase)) {
+                        $detectedProtectedPaths += $it.FullName
+                        break
+                    }
+                }
+            }
+        }
+        else {
+            # Try Resolve-Path, fallback to expanded string
+            $resolved = (Resolve-Path -Path $exp -ErrorAction SilentlyContinue).Path
+            if (-not $resolved) { $resolved = $exp }
+            foreach ($base in $protectedBases) {
+                if ($resolved.StartsWith($base, [System.StringComparison]::InvariantCultureIgnoreCase)) {
+                    $detectedProtectedPaths += $resolved
+                    break
+                }
+            }
+        }
+    }
+    return $detectedProtectedPaths | Select-Object -Unique
+}
 function remove_file {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
-        [Parameter(Mandatory = $false)][switch]$WhatIf = $false
+        [Parameter(Mandatory = $false)][switch]$WhatIf = $false,
+        [Parameter(Mandatory = $false)][switch]$Force = $false
     )
 
     $expandedPath = expand_cmd_path -Path $FilePath
+
+    # Check for protected/system paths and require -Force to proceed
+    $protectedMatches = test_protected_path -Path $expandedPath
+    if ($protectedMatches -and $protectedMatches.Count -gt 0) {
+        if (-not $Force) {
+            write_log_message "Protected/system path detected: $($protectedMatches -join ', '). Use -Force to override." -Level "Error" -WriteToConsole $true
+            return
+        }
+        else {
+            write_log_message "Protected/system path detected but -Force specified. Proceeding to remove: $($protectedMatches -join ', ')" -Level "Warning" -WriteToConsole $true
+        }
+    }
 
     # Resolve wildcards for directories
     $resolvedDirs = Get-ChildItem -Path $expandedPath -Directory -ErrorAction SilentlyContinue
@@ -132,4 +194,33 @@ function remove_file {
     }
 }
 
-remove_file -FilePath "{[FullFilePath]}"
+function ConvertTo-BoolFlag {
+    param(
+        [object]$Value,
+        [bool]$Default = $false
+    )
+
+    if ($null -eq $Value) { return $Default }
+    if ($Value -is [bool]) { return [bool]$Value }
+    if ($Value -is [int] -or $Value -is [long] -or $Value -is [double]) { return ($Value -ne 0) }
+
+    $s = [string]$Value
+    if (-not $s) { return $Default }
+    $s = $s.Trim().ToLowerInvariant()
+
+    if ($s -in @('1','true','yes','y','on')) { return $true }
+    if ($s -in @('0','false','no','n','off','')) { return $false }
+
+    # Fallback: non-empty string => true
+    if ($s) { return $true }
+    return $Default
+}
+
+$forced = ConvertTo-BoolFlag ${ForceFlag}
+$WhatIf = ConvertTo-BoolFlag ${WhatIfFlag}
+
+# Call remove_file with explicit boolean parameter binding (works for switch or bool parameters)
+remove_file -FilePath ${Full File Path} -WhatIf:$WhatIf -Force:$forced
+
+
+#remove_file -FilePath "C:\Windows\notepad - Copy.exe"

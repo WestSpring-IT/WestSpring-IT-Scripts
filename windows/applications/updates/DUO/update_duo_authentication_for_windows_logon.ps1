@@ -253,7 +253,7 @@ if ($oldDuo.Upgrade) {
     $downloadResult = download_file -Uri $duoInstallerUrl -filePath "$env:TEMP" -MaxTries 3 -ProgressPreference "SilentlyContinue"
     if ($downloadResult.success) {
         write_log_message -message "DUO installer downloaded successfully: $($downloadResult.fullPath) (Size: $($downloadResult.fileSize) MB, Time: $($downloadResult.totalTime) seconds)" -level "Success" -writeToConsole $true
-        write_log_message -message "Downloaded version: $(Get-ItemProperty -Path $downloadResult.fullPath).VersionInfo.ProductVersion" -level "Info" -writeToConsole $true
+        write_log_message -message "Downloaded version: $((Get-ItemProperty -Path $downloadResult.fullPath).VersionInfo.ProductVersion)" -level "Info" -writeToConsole $true
     }
     else {
         write_log_message -message "Failed to download DUO installer after $($downloadResult.attempt) attempts." -level "Error" -writeToConsole $true

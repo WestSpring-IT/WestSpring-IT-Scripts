@@ -8,9 +8,10 @@ $ciphers = @(
     "RC4 56/128",
     "RC4 40/128"
 )
+[int]$Global:I = 0
 
 # Function to disable a cipher
-function Disable-Cipher {
+function disable_cipher {
     param (
         [string]$cipher
     )
@@ -18,13 +19,20 @@ function Disable-Cipher {
     if (-Not (Test-Path $regPath)) {
         New-Item -Path $regPath -Force | Out-Null
     }
-    Set-ItemProperty -Path $regPath -Name "Enabled" -Value 0
-    Write-Output "$cipher cipher has been disabled."
+    try {
+        Set-ItemProperty -Path $regPath -Name "Enabled" -Value 0
+        Write-Output "$cipher cipher has been disabled."
+        $Global:I++
+    }
+    catch {
+        Write-Output "Failed to disable $cipher cipher: $_"
+    } 
+    
 }
 
 # Disable each cipher
 foreach ($cipher in $ciphers) {
-    Disable-Cipher -cipher $cipher
+    disable_cipher -cipher $cipher
 }
 
-Write-Host "All specified ciphers have been disabled."
+Write-Host " $($Global:I)/$(($ciphers | Measure-Object).Count) specified ciphers have been disabled."

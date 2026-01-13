@@ -109,7 +109,7 @@ install_required_modules -modules @("PSReadLine", "Az.Accounts")
     foreach ($module in $modules) {
         $modulePresent = Get-Module -Name $module -ListAvailable
         If (!($modulePresent)) {
-            $moduleInstall = Install-Module -Name $module -Scope CurrentUser -Force -AllowClobber
+            $moduleInstall = Install-Module -Name $module -Force -AllowClobber
             #write-host $moduleInstall
             If (!(Get-Module -Name $module -ListAvailable)) {
                 Write-Host "Module $module could not be installed." -ForegroundColor Red
