@@ -2,7 +2,7 @@ Param(
     [Parameter(Mandatory = $false, HelpMessage = "URI to download the Cyba Agent installer from.")]
     [string]$Uri = "https://wsprodfileuksouth.blob.core.windows.net/clients/cyber_essentials/agents/cybaagent/CybaAgent-Windows.exe",
     [Parameter(Mandatory = $false, HelpMessage = "Installation string for the Cyba Agent.")]
-    [string]$installString = ".\CybaAgent.exe -i -t tt-1d1768b3494a61833cff4cc258ef1fd4-9e047439a31ab862209949a9920f030e5f29cf31867cf211505eb201c2295d82cbdac822fd018ec17dab31225045eefdc3a82c7e2fb2cc13f7a53521d7ee293f25f318cc7df44192364368863bfc6cb5e39900b9177284b5df01df56ddb627ecfa114ead6249d49dd4e13f697cf826712c09b75c5650965fd866b15f78416939 -s https://westspring.cybaops.com/" #"{[InstallString]}"
+    [string]$installString = "{[InstallString]}"
 )
 
 $installString = $installString.Replace(".\CybaAgent.exe ", "").Trim()
@@ -209,18 +209,46 @@ if ($downloadRestult.success) {
     # Install the agent
     write_log_message -message "Starting Cyba Agent installation..." -level "Info" -writeToConsole $true
     try {
-        $installProcess = Start-Process -FilePath $downloadRestult.fullPath -ArgumentList $installString -Wait -PassThru
-        if ($installProcess.ExitCode -eq 0) {
-            write_log_message -message "Cyba Agent installed successfully." -level "Success" -writeToConsole $true
+        $process = Start-Process -FilePath $downloadRestult.fullPath -ArgumentList $installString -Wait -PassThru
+        while ($process -and $process.HasExited -eq $false) {
+            Start-Sleep -Seconds 1
+        }
+
+        # Retrieve child process exit code (fall back to 1 if unavailable)
+        $exitCode = 1
+        if ($process -and $process -is [System.Diagnostics.Process]) {
+            try { $exitCode = [int]$process.ExitCode } catch { $exitCode = 1 }
+        }
+
+        $service = Get-Service -Name "CybaVerse CybaAgent" -ErrorAction SilentlyContinue
+        $serviceRunning = $false
+        if ($service) { $serviceRunning = $service.Status -eq 'Running' }
+
+        # Log details but always preserve and return the child's exit code
+        if ($exitCode -eq 0 -and $serviceRunning) {
+            write_log_message -message "Cyba Agent installed successfully (ExitCode: $exitCode; ServiceRunning: $serviceRunning)." -level "Success" -writeToConsole $true
         }
         else {
-            write_log_message -message "Cyba Agent installation failed with exit code $($installProcess.ExitCode)." -level "Error" -writeToConsole $true
+            $level = if ($exitCode -ne 0) { 'Error' } elseif (-not $serviceRunning) { 'Warning' } else { 'Info' }
+            write_log_message -message "Cyba Agent installation completed (ExitCode: $exitCode; ServiceRunning: $serviceRunning)." -level $level -writeToConsole $true
         }
+
+        # Preserve exit code from child process in all cases
+        $global:LASTEXITCODE = $exitCode
+        [Environment]::Exit($exitCode)
     }
     catch {
         write_log_message -message "Exception during Cyba Agent installation: $($_.Exception.Message)" -level "Error" -writeToConsole $true
+        $errCode = 1
+        if ($process -and $process -is [System.Diagnostics.Process]) {
+            try { $errCode = [int]$process.ExitCode } catch { $errCode = 1 }
+        }
+        $global:LASTEXITCODE = $errCode
+        [Environment]::Exit($errCode)
     }
 }
 else {
     write_log_message -message "Failed to download Cyba Agent installer after $($downloadRestult.attempt) attempts." -level "Error" -writeToConsole $true
+    $global:LASTEXITCODE = 2
+    [Environment]::Exit(2)
 }
