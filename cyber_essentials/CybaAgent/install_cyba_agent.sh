@@ -11,7 +11,9 @@ set -euo pipefail
 # For backward compatibility you can still pass the full command as a single quoted positional argument.
 
 CYBA_URL="https://wsprodfileuksouth.blob.core.windows.net/clients/cyber_essentials/agents/cybaagent/CybaAgent-Mac.zip"
-CYBA_INSTALL="{[Cyba_Install_Command]}"
+# Allow the RMM to replace the placeholder {[CYBA_INSTALL_COMMAND]} directly in the script
+# Precedence: 1) CLI `--install-command`, 2) environment variable `CYBA_INSTALL`, 3) hardcoded RMM placeholder
+CYBA_INSTALL="${CYBA_INSTALL:-{[CYBA_INSTALL_COMMAND]}}"
 
 # Parse arguments — prefer --install-command; positional single-argument fallback kept for backward compatibility
 function usage() {
@@ -80,8 +82,9 @@ echo "Server: $CYBA_SERVER"
 echo "Temp dir: $TMPDIR"
 echo "=============================="
 
-if [[ -z "$CYBA_INSTALL" || "$CYBA_INSTALL" == "{[Cyba_Install_Command]}" ]]; then
-    echo "ERROR: CYBA_INSTALL not provided. Provide the full installer command as the sole argument or edit CYBA_INSTALL in the script." >&2
+## Detect missing installer command or an unreplaced RMM placeholder
+if [[ -z "$CYBA_INSTALL" || "$CYBA_INSTALL" =~ \{\[.*INSTALL.*\]\} ]]; then
+    echo "ERROR: CYBA_INSTALL not provided. Provide the full installer command via --install-command, environment variable CYBA_INSTALL, or have your RMM replace {[CYBA_INSTALL_COMMAND]} in the script." >&2
     exit 1
 fi
 

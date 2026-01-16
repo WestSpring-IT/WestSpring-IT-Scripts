@@ -122,6 +122,21 @@ install_required_modules -modules @("PSReadLine", "Az.Accounts")
     }
 }
 
+function invoke_using_powershell_7 {
+    param (
+        [string]$scriptPath,
+        [array]$scriptParams
+    )
+    $pwshPath = "C:\Program Files\PowerShell\7\pwsh.exe"
+    if (Test-Path $pwshPath) {
+        $paramString = $scriptParams | ForEach-Object { "-$_" } | Out-String
+        & $pwshPath -File $scriptPath $paramString
+    } else {
+        write_log_message "PowerShell 7 is not installed at the expected path: $pwshPath" -level "Error" -writeToConsole $true
+        exit 1
+    }
+}
+
 $requiredModules = @("Microsoft.WinGet.Client")
 
 foreach ($module in $requiredModules) {

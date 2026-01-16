@@ -94,50 +94,50 @@ if ($installString -match 'WebServiceUri=([^\s]+)') {
 ## Function Definitions ##
 function write_log_message {
     <#
-.SYNOPSIS
-    Writes a formatted log message to a daily log file and optionally to the console.
+    .SYNOPSIS
+        Writes a formatted log message to a daily log file and optionally to the console.
 
-.DESCRIPTION
-    The write_log_message function logs messages with a timestamp and severity level.
-    It writes the log entry to a log file located in the user's TEMP directory, named
-    after the script and the current date. Optionally, it can also output the message
-    to the console in a color corresponding to the severity level.
+    .DESCRIPTION
+        The write_log_message function logs messages with a timestamp and severity level.
+        It writes the log entry to a log file located in the user's TEMP directory, named
+        after the script and the current date. Optionally, it can also output the message
+        to the console in a color corresponding to the severity level.
 
-.PARAMETER message
-    The message text to log. This parameter is mandatory.
+    .PARAMETER message
+        The message text to log. This parameter is mandatory.
 
-.PARAMETER level
-    The severity level of the message. Valid values are:
-    - Info (default)
-    - Warning
-    - Error
-    - Success
+    .PARAMETER level
+        The severity level of the message. Valid values are:
+        - Info (default)
+        - Warning
+        - Error
+        - Success
 
-.PARAMETER writeToConsole
-    If set to $false (default), the message is only written to the log file.
-    If set to $true, the message will also be written to the console with color coding.
+    .PARAMETER writeToConsole
+        If set to $false (default), the message is only written to the log file.
+        If set to $true, the message will also be written to the console with color coding.
 
-.EXAMPLE
-    write_log_message -message "Script started."
+    .EXAMPLE
+        write_log_message -message "Script started."
 
-    Logs an informational message to the log file.
+        Logs an informational message to the log file.
 
-.EXAMPLE
-    write_log_message -message "Operation completed successfully." -level "Success" -writeToConsole $true
+    .EXAMPLE
+        write_log_message -message "Operation completed successfully." -level "Success" -writeToConsole $true
 
-    Logs a success message to the log file and displays it in green in the console.
+        Logs a success message to the log file and displays it in green in the console.
 
-.EXAMPLE
-    write_log_message -message "An error occurred." -level "Error"
+    .EXAMPLE
+        write_log_message -message "An error occurred." -level "Error"
 
-    Logs an error message to the log file in red (if displayed in console).
+        Logs an error message to the log file in red (if displayed in console).
 
-.NOTES
-    Log files are stored in the TEMP directory with the format:
-    yyyy-MM-dd_<ScriptName>.log
+    .NOTES
+        Log files are stored in the TEMP directory with the format:
+        yyyy-MM-dd_<ScriptName>.log
 
-    Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
-#>
+        Example: C:\Users\<User>\AppData\Local\Temp\2025-08-01_write_log_message.log
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$message,
@@ -382,10 +382,12 @@ If ($qualysDownload.success) {
     try {
         write_log_message "Invoking the following command: cmd.exe /c $($InstallerPath) $($installString)" "INFO" -writeToConsole $true
         $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$($qualysDownload.fullPath) $installString`"" -Wait -NoNewWindow -ErrorAction Stop
-        Start-Sleep -Seconds 5
+        while ($process.HasExited -ne $true) {
+            Start-Sleep -Seconds 1
+        } 
         $msiProduct = Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*" | Where-Object { $_.DisplayName -eq 'Qualys Cloud Security Agent' }
-        if ($msiProduct-and $process.ExitCode -eq 0) {
-            $installSuccess = $true
+        if ($msiProduct -and $process.ExitCode -eq 0) {
+            #$installSuccess = $true
             write_log_message "Qualys Agent ($($msiProduct.Version)) installation completed" -level "SUCCESS" -writeToConsole $true
             Start-Sleep -Seconds 5
             write_log_message "Starting the initial scan" -level "INFO" -writeToConsole $true

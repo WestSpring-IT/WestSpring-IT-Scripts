@@ -210,47 +210,7 @@ function write_log_message {
     $logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
     Add-Content -Path $logFilePath -Value $logEntry
 }
-
-# Build configuration object from supplied parameters for clarity
-$config = [PSCustomObject]@{
-    IKey = $duoIntegrationKey
-    SKey = $duoSecretKey
-    Host = $duoApiHost
-    AutoPush = [bool]$duoAutoPush
-    FailOpen = [bool]$duoFailOpen
-    EnableSmartCard = [bool]$duoEnableSmartCard
-    RDPOnly = [bool]$duoRdpOnly
-}
-
-$maskedConfigIkey = if ($config.IKey) { $config.IKey.Substring(0,[Math]::Min(8,$config.IKey.Length)) + '...' } else { 'null' }
-write_log_message -message "Using configuration: IKEY=$maskedConfigIkey, HOST=$($config.Host), AutoPush=$($config.AutoPush), FailOpen=$($config.FailOpen), SmartCard=$($config.EnableSmartCard), RDPOnly=$($config.RDPOnly)" -level "Info" -writeToConsole $true
-
-#Check for existing DUO installation
-$oldDuo = @{}
-$targetDisplayName = 'Duo Authentication for Windows Logon*'
-$searchPaths = @(
-    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
-    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
-)
-
-$foundKey = $null
-foreach ($p in $searchPaths) {
-    try {
-        $children = Get-ChildItem -Path $p -ErrorAction SilentlyContinue
-        foreach ($c in $children) {
-            try {
-                $props = Get-ItemProperty -Path $c.PSPath -ErrorAction SilentlyContinue
-                if ($props.DisplayName -like $targetDisplayName) {
-                    $foundKey = $c.PSPath
-                    break
-                }
-            } catch {}
-        }
-        if ($foundKey) { break }
-    } catch {}
-}
-
-function Get-DuoInstalledConfig {
+function get_installed_duo_config {
     param(
         [Parameter(Mandatory=$true)]
         [string]$RegistryUninstallPath
@@ -327,15 +287,56 @@ function Get-DuoInstalledConfig {
     return $config
 }
 
-if ($foundKey) {
-    $oldDuo.RegistryPath = $foundKey
+# Build configuration object from supplied parameters for clarity
+$config = [PSCustomObject]@{
+    IKey = $duoIntegrationKey
+    SKey = $duoSecretKey
+    Host = $duoApiHost
+    AutoPush = [bool]$duoAutoPush
+    FailOpen = [bool]$duoFailOpen
+    EnableSmartCard = [bool]$duoEnableSmartCard
+    RDPOnly = [bool]$duoRdpOnly
+}
+
+$maskedConfigIkey = if ($config.IKey) { $config.IKey.Substring(0,[Math]::Min(8,$config.IKey.Length)) + '...' } else { 'null' }
+write_log_message -message "Using configuration: IKEY=$maskedConfigIkey, HOST=$($config.Host), AutoPush=$($config.AutoPush), FailOpen=$($config.FailOpen), SmartCard=$($config.EnableSmartCard), RDPOnly=$($config.RDPOnly)" -level "Info" -writeToConsole $true
+
+#Check for existing DUO installation
+$currentInstall = @{}
+$targetDisplayName = 'Duo Authentication for Windows Logon*'
+$searchPaths = @(
+    'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall',
+    'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+)
+
+$foundKey = $null
+foreach ($p in $searchPaths) {
     try {
-        $oldDuo.InstalledVersion = (Get-ItemProperty -Path $foundKey -ErrorAction SilentlyContinue).DisplayVersion
-    } catch { $oldDuo.InstalledVersion = $null }
-    write_log_message -message "DUO Authentication for Windows Logon is currently installed. Registry key: $foundKey. Version: $($oldDuo.InstalledVersion)" -level "Info" -writeToConsole $true
+        $children = Get-ChildItem -Path $p -ErrorAction SilentlyContinue
+        foreach ($c in $children) {
+            try {
+                $props = Get-ItemProperty -Path $c.PSPath -ErrorAction SilentlyContinue
+                if ($props.DisplayName -like $targetDisplayName) {
+                    $foundKey = $c.PSPath
+                    break
+                }
+            } catch {}
+        }
+        if ($foundKey) { break }
+    } catch {}
+}
+
+
+
+if ($foundKey) {
+    $currentInstall.RegistryPath = $foundKey
+    try {
+        $currentInstall.InstalledVersion = (Get-ItemProperty -Path $foundKey -ErrorAction SilentlyContinue).DisplayVersion
+    } catch { $currentInstall.InstalledVersion = $null }
+    write_log_message -message "DUO Authentication for Windows Logon is currently installed. Registry key: $foundKey. Version: $($currentInstall.InstalledVersion)" -level "Info" -writeToConsole $true
 
     # Read installed configuration and compare with provided parameters
-    $installedConfig = Get-DuoInstalledConfig -RegistryUninstallPath $foundKey
+    $installedConfig = get_installed_duo_config -RegistryUninstallPath $foundKey
     $maskedIkey = if ($installedConfig.IntegrationKey) { $installedConfig.IntegrationKey.Substring(0, [Math]::Min(8, $installedConfig.IntegrationKey.Length)) + '...' } else { 'null' }
     $secretPresent = if ($installedConfig.SecretKey) { $true } else { $false }
 
@@ -386,11 +387,12 @@ $smartcard = if ($config.EnableSmartCard) { '#1' } else { '#0' }
 $rdponly = if ($config.RDPOnly) { '#1' } else { '#0' }
 
 $msiInner = "/qn IKEY=`"$($config.IKey)`" SKEY=`"$($config.SKey)`" HOST=`"$($config.Host)`" AUTOPUSH=`"$autopush`" FAILOPEN=`"$failopen`" SMARTCARD=`"$smartcard`" RDPONLY=`"$rdponly`""
-$installArgs = "/S /V`"$msiInner`""
+$installArgs = "/S /V`"$msiInner`" /l*v! $($installLogs)"
 write_log_message -message "Starting DUO installation with arguments: $installArgs" -level "Info" -writeToConsole $true
 $installProcess = Start-Process -FilePath $downloadResult.fullPath -ArgumentList $installArgs -Wait -PassThru
 
 if ($installProcess.ExitCode -eq 0) {
+    write_log_message -message $installLogs -level "Debug" -writeToConsole $false
     # Search registry again for the updated version (in case the registry path changed)
     $newDuo = @{}
     $foundNewKey = $null
@@ -417,10 +419,14 @@ if ($installProcess.ExitCode -eq 0) {
         write_log_message -message "DUO Authentication for Windows Logon updated successfully to version $($newDuo.InstalledVersion)." -level "Success" -writeToConsole $true
     } else {
         write_log_message -message "DUO installation completed but could not verify version in registry." -level "Warning" -writeToConsole $true
+        write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
+
     }
+    write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
     exit 0
 }
 else {
     write_log_message -message "DUO installation failed with exit code: $($installProcess.ExitCode)" -level "Error" -writeToConsole $true
+    write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
     exit 1
 }
