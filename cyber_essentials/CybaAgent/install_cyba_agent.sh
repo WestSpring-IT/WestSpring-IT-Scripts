@@ -149,8 +149,8 @@ fi
 echo "Cleaning up temporary files..."
 rm -rf "$TMPDIR"
 
-echo "=============================="
+echo "================================"
 echo "CybaAgent installation complete."
-echo "=============================="
+echo "================================"
 
 exit 0

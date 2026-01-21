@@ -1,7 +1,11 @@
 ##NOTE: THIS HAS TO RUN IN 64-BIT MODE!
 ##Set this URL
-$url = ""
-$directory = "C:\Users\Public\Pictures"
+param{
+    [Parameter(Mandatory = $false)]
+    [string]$url
+    [parameter(Mandatory = $false)]
+    [string]$directory = "C:\Users\Public\Pictures"
+}
 
 function write_log_message {
     <#

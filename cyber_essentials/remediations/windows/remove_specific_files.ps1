@@ -193,7 +193,6 @@ function remove_file {
         }
     }
 }
-
 function ConvertTo-BoolFlag {
     param(
         [object]$Value,
