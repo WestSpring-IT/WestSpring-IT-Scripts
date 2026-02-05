@@ -4,11 +4,11 @@ set -euo pipefail
 # ==============================================
 # Configuration
 # ==============================================
-DOMAIN="omada.westspring-it.co.uk"
+DOMAIN="*.westspring-it.co.uk"  # Update this to your domain
 CERT_PATH="/etc/letsencrypt/live/$DOMAIN"
-KEYSTORE_PATH="/opt/tplink/EAPController/data/keystore"
-P12_FILE="$(date '+%Y_%m')_omada.p12"
-PASSWORD="tplink"
+KEYSTORE_PATH="/usr/lib/unifi/data/keystore"
+P12_FILE="$(date '+%Y_%m')_unifi.p12"
+PASSWORD="aircontrolenterprise"  # Default Unifi keystore password
 
 LOG_DIR="/home/ubuntu/logs"
 mkdir -p "$LOG_DIR"
@@ -31,8 +31,8 @@ log() {
 # ==============================================
 get_keystore_expiry() {
     sudo keytool -exportcert \
-        -alias eap \
-        -keystore "$KEYSTORE_PATH/eap.keystore" \
+        -alias unifi \
+        -keystore "$KEYSTORE_PATH/keystore" \
         -storepass $PASSWORD 2>/dev/null |
     openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2 | xargs
 }
@@ -66,20 +66,20 @@ DAYS_LE=$(days_until_expiry "$EXPIRY_LE")
 log "Let's Encrypt certificate expiry: $EXPIRY_LE ($DAYS_LE day(s) remaining)."
 
 # ==============================================
-# Step 2: Get Omada keystore certificate expiry
+# Step 2: Get Unifi keystore certificate expiry
 # ==============================================
-EXPIRY_OMADA=""
-DAYS_OMADA=9999
-if [ -f "$KEYSTORE_PATH/eap.keystore" ]; then
-    EXPIRY_OMADA=$(get_keystore_expiry || true)
-    if [ -n "$EXPIRY_OMADA" ]; then
-        DAYS_OMADA=$(days_until_expiry "$EXPIRY_OMADA")
-        log "Omada keystore certificate expiry: $EXPIRY_OMADA ($DAYS_OMADA day(s) remaining)."
+EXPIRY_UNIFI=""
+DAYS_UNIFI=9999
+if [ -f "$KEYSTORE_PATH/keystore" ]; then
+    EXPIRY_UNIFI=$(get_keystore_expiry || true)
+    if [ -n "$EXPIRY_UNIFI" ]; then
+        DAYS_UNIFI=$(days_until_expiry "$EXPIRY_UNIFI")
+        log "Unifi keystore certificate expiry: $EXPIRY_UNIFI ($DAYS_UNIFI day(s) remaining)."
     else
-        log "Could not read expiry date from Omada keystore."
+        log "Could not read expiry date from Unifi keystore."
     fi
 else
-    log "Omada keystore not found at $KEYSTORE_PATH/eap.keystore."
+    log "Unifi keystore not found at $KEYSTORE_PATH/keystore."
 fi
 
 # ==============================================
@@ -89,20 +89,20 @@ RENEW=false
 APPLY=false
 
 if $FORCE_SYNC; then
-    log "--force-sync flag detected. Forcing Omada keystore rebuild."
+    log "🔧 --force-sync flag detected. Forcing Unifi keystore rebuild."
     APPLY=true
 
-elif [ "$DAYS_OMADA" -le 7 ]; then
-    log "Omada keystore certificate expiring soon (<7 days)."
+elif [ "$DAYS_UNIFI" -le 7 ]; then
+    log "Unifi keystore certificate expiring soon (<7 days)."
     if [ "$DAYS_LE" -le 7 ]; then
         log "Let's Encrypt certificate also expiring soon. Renewal required."
         RENEW=true
     else
-        log "Let's Encrypt certificate is still valid. Will reapply it to Omada."
+        log "Let's Encrypt certificate is still valid. Will reapply it to Unifi."
         APPLY=true
     fi
 else
-    log "Omada keystore certificate valid for more than 7 days. No immediate action needed."
+    log "Unifi keystore certificate valid for more than 7 days. No immediate action needed."
 fi
 
 # ==============================================
@@ -110,8 +110,9 @@ fi
 # ==============================================
 if $RENEW; then
     log "Starting Let's Encrypt renewal..."
-    sudo tpeap stop >> "$LOG_FILE" 2>&1 || true
-    sudo pkill -f "java.*eap" || true
+    sudo systemctl stop unifi >> "$LOG_FILE" 2>&1 || true
+    sudo pkill -f "java.*unifi" || true
+    sleep 5
     sudo certbot renew >> "$LOG_FILE" 2>&1
 
     EXPIRY_LE=$(openssl x509 -enddate -noout -in "$CERT_PATH/fullchain.pem" | cut -d= -f2 | xargs)
@@ -121,51 +122,74 @@ if $RENEW; then
 fi
 
 # ==============================================
-# Step 5: Apply (rebuild Omada keystore)
+# Step 5: Apply (rebuild Unifi keystore)
 # ==============================================
 if $APPLY; then
-    log "Applying Let's Encrypt certificate to Omada Controller..."
+    log "Applying Let's Encrypt certificate to Unifi Controller..."
 
-    sudo tpeap stop >> "$LOG_FILE" 2>&1 || true
-    sudo pkill -f "java.*eap" || true
+    sudo systemctl stop unifi >> "$LOG_FILE" 2>&1 || true
+    sudo pkill -f "java.*unifi" || true
+    sleep 5
 
-    sudo rm -f "$KEYSTORE_PATH/eap.keystore" "$KEYSTORE_PATH/eap.cer" >> "$LOG_FILE" 2>&1
+    # Backup existing keystore
+    if [ -f "$KEYSTORE_PATH/keystore" ]; then
+        sudo cp "$KEYSTORE_PATH/keystore" "$KEYSTORE_PATH/keystore.backup.$(date '+%Y%m%d_%H%M%S')" >> "$LOG_FILE" 2>&1
+    fi
 
+    # Remove old keystore
+    sudo rm -f "$KEYSTORE_PATH/keystore" >> "$LOG_FILE" 2>&1
+
+    # Create PKCS12 file from Let's Encrypt certificates
     sudo openssl pkcs12 -export \
         -inkey "$CERT_PATH/privkey.pem" \
         -in "$CERT_PATH/cert.pem" \
         -certfile "$CERT_PATH/chain.pem" \
-        -name eap \
+        -name unifi \
         -out "$KEYSTORE_PATH/$P12_FILE" \
         -password pass:$PASSWORD >> "$LOG_FILE" 2>&1
 
+    # Import PKCS12 into Java keystore
     sudo keytool -importkeystore \
         -noprompt \
         -deststorepass $PASSWORD \
-        -destkeystore "$KEYSTORE_PATH/eap.keystore" \
+        -destkeystore "$KEYSTORE_PATH/keystore" \
         -srckeystore "$KEYSTORE_PATH/$P12_FILE" \
         -srcstoretype PKCS12 \
-        -srcstorepass $PASSWORD >> "$LOG_FILE" 2>&1
+        -srcstorepass $PASSWORD \
+        -alias unifi >> "$LOG_FILE" 2>&1
 
-    sudo tpeap start >> "$LOG_FILE" 2>&1
-    sleep 10
+    # Set proper permissions
+    sudo chown unifi:unifi "$KEYSTORE_PATH/keystore" >> "$LOG_FILE" 2>&1
+    sudo chmod 640 "$KEYSTORE_PATH/keystore" >> "$LOG_FILE" 2>&1
+
+    # Start Unifi service
+    sudo systemctl start unifi >> "$LOG_FILE" 2>&1
+    sleep 15
 
     # Post-check
     NEW_EXPIRY=$(get_keystore_expiry || true)
     if [ -n "$NEW_EXPIRY" ]; then
-        log "New Omada keystore certificate expiry: $NEW_EXPIRY"
+        log "New Unifi keystore certificate expiry: $NEW_EXPIRY"
     else
-        log "Could not verify new Omada keystore certificate expiry."
+        log "Could not verify new Unifi keystore certificate expiry."
     fi
 fi
 
 # ==============================================
 # Step 6: Final verification
 # ==============================================
-if pgrep -f "java.*eap" > /dev/null; then
-    log "Omada Controller is running."
+if systemctl is-active --quiet unifi; then
+    log "Unifi Controller is running."
 else
-    log "Warning: Omada Controller may not be running!"
+    log "Warning: Unifi Controller may not be running!"
+    log "Attempting to start Unifi Controller..."
+    sudo systemctl start unifi >> "$LOG_FILE" 2>&1
+    sleep 10
+    if systemctl is-active --quiet unifi; then
+        log "Unifi Controller started successfully."
+    else
+        log "ERROR: Failed to start Unifi Controller. Check logs with: sudo journalctl -u unifi -n 50"
+    fi
 fi
 
 log "Script completed."

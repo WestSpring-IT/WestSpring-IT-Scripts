@@ -45,7 +45,7 @@ read_bool_default_false() {
     fi
 }
 
-show_usage() {s
+show_usage() {
     cat <<EOF
 Usage: $0 [options]
 
@@ -134,6 +134,18 @@ fi
 if [ ! -f "${pkg_path}" ]; then
     echo "No package found at $pkg_path. Exiting."
     exit 1
+fi
+
+# Extract version from package name if not already set
+if [[ -z "${version}" ]]; then
+    # Extract version from package name (e.g., MacLogon-NotConfigured-2.0.5.pkg -> 2.0.5)
+    version=$(basename "${pkg_path}" | sed -n 's/MacLogon-NotConfigured-\([0-9.]*\)\.pkg/\1/p')
+    if [[ -z "${version}" ]]; then
+        echo "Warning: Could not extract version from package name. Using 'configured' as version identifier."
+        version="configured"
+    else
+        echo "Extracted version from package: ${version}"
+    fi
 fi
 
 # Prompt for required values if not provided

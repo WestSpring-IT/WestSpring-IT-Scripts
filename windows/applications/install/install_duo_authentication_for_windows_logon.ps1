@@ -207,8 +207,8 @@ function write_log_message {
         Write-Host $logEntry -ForegroundColor $consoleColour
     }
     # Append to log file
-    $logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
-    Add-Content -Path $logFilePath -Value $logEntry
+    $Script:logFilePath = "$env:TEMP\$(get-date -f "yyyy-MM-dd")_$($scriptName).log"
+    Add-Content -Path $Script:logFilePath -Value $logEntry
 }
 function get_installed_duo_config {
     param(
@@ -387,12 +387,12 @@ $smartcard = if ($config.EnableSmartCard) { '#1' } else { '#0' }
 $rdponly = if ($config.RDPOnly) { '#1' } else { '#0' }
 
 $msiInner = "/qn IKEY=`"$($config.IKey)`" SKEY=`"$($config.SKey)`" HOST=`"$($config.Host)`" AUTOPUSH=`"$autopush`" FAILOPEN=`"$failopen`" SMARTCARD=`"$smartcard`" RDPONLY=`"$rdponly`""
-$installArgs = "/S /V`"$msiInner`" /l*v! $($installLogs)"
+$installArgs = "/S /V`"$msiInner`"" # /l*v! $($Script:logFilePath)
 write_log_message -message "Starting DUO installation with arguments: $installArgs" -level "Info" -writeToConsole $true
 $installProcess = Start-Process -FilePath $downloadResult.fullPath -ArgumentList $installArgs -Wait -PassThru
 
 if ($installProcess.ExitCode -eq 0) {
-    write_log_message -message $installLogs -level "Debug" -writeToConsole $false
+    write_log_message -message $Script:logFilePath -level "Debug" -writeToConsole $false
     # Search registry again for the updated version (in case the registry path changed)
     $newDuo = @{}
     $foundNewKey = $null
@@ -419,14 +419,14 @@ if ($installProcess.ExitCode -eq 0) {
         write_log_message -message "DUO Authentication for Windows Logon updated successfully to version $($newDuo.InstalledVersion)." -level "Success" -writeToConsole $true
     } else {
         write_log_message -message "DUO installation completed but could not verify version in registry." -level "Warning" -writeToConsole $true
-        write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
+        write_log_message -message "Logs may be found at: $($Script:logFilePath)" -level "Info" -writeToConsole $true
 
     }
-    write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
+    write_log_message -message "Logs may be found at: $($Script:logFilePath)" -level "Info" -writeToConsole $true
     exit 0
 }
 else {
     write_log_message -message "DUO installation failed with exit code: $($installProcess.ExitCode)" -level "Error" -writeToConsole $true
-    write_log_message -message "Logs may be found at: $($installLogs)" -level "Info" -writeToConsole $true
+    write_log_message -message "Logs may be found at: $($Script:logFilePath)" -level "Info" -writeToConsole $true
     exit 1
 }

@@ -10,7 +10,7 @@
     The email address of the client to be created.
 
 .EXAMPLE
-    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "client-phished@westwpring-it.co.uk"
+    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "phished+client@westwpring-it.co.uk"
 
 .SYNOPSIS
     Sets up the environment and necessary configurations for the "phished" script version 1.0.1.
@@ -53,7 +53,7 @@ Phished Setup Script v1.0.1
     Displays this help message.
 
 .EXAMPLE
-    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "client-phished@westwpring-it.co.uk" -help
+    .\phished-setup-v1.0.1.ps1 -phishedAPIUsername "your_username" -phishedAPIToken "your_token" -phishedAPISecret "your_secret" -clientEmail "phished+client@westwpring-it.co.uk"
 
 "@ -ForegroundColor Cyan
     Exit
@@ -139,10 +139,10 @@ Function load_required_modules {
         # Ensure the module is imported
         if (-not (Get-Module -Name ExchangeOnlineManagement -ListAvailable)) {
             write_log_message "ExchangeOnlineManagement module not found. Attempting to install..." -level "Warning" -writeToConsole $true
-            Install-Module -Name ExchangeOnlineManagement -Force -ErrorAction Stop
+            Install-Module -Name ExchangeOnlineManagement -Force -ErrorAction Stop | Out-Null
         }
         write_log_message "ExchangeOnlineManagement module found." -level "Info" -writeToConsole $true
-        Import-Module ExchangeOnlineManagement -ErrorAction Stop
+        Import-Module ExchangeOnlineManagement -ErrorAction Stop | Out-Null
         write_log_message "ExchangeOnlineManagement module loaded successfully." -level "Success" -writeToConsole $true
 
         # Ensure connection to Exchange Online
@@ -224,11 +224,11 @@ Function configure_phished_domains_and_ips {
 
 # Create transport rules
 Function create_transport_rules {
-    if (-not $Global:CustomerSecurityHeader) {
-        $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
+    if (-not $Script:CustomerSecurityHeader) {
+        $Script:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
     }
 
-    $securityHeader = $Global:CustomerSecurityHeader
+    $securityHeader = $Script:CustomerSecurityHeader
 
     write_log_message "Creating transport rules using Security Header: $securityHeader" -level "Info" -writeToConsole $true
     $rules = @(
@@ -370,15 +370,15 @@ Function create_phished_customer {
                     $emailHeader = $addedDomain.email_header
                     if ($null -ne $emailHeader -and $emailHeader -ne "") {
                         write_log_message "Email Header retrieved: $emailHeader" -level "Success" -writeToConsole $true
-                        $Global:CustomerSecurityHeader = $emailHeader
-                        write_log_message "Customer Security Header set to: $Global:CustomerSecurityHeader" -level "Info" -writeToConsole $true
+                        $Script:CustomerSecurityHeader = $emailHeader
+                        write_log_message "Customer Security Header set to: $Script:CustomerSecurityHeader" -level "Info" -writeToConsole $true
                     } else {
                         write_log_message "Email Header not found. Please enter it manually." -level "Warning" -writeToConsole $true
-                        $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
+                        $Script:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
                     }
                 } else {
                     write_log_message "Failed to retrieve email header. Please enter it manually." -level "Warning" -writeToConsole $true
-                    $Global:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
+                    $Script:CustomerSecurityHeader = Read-Host "Enter the domain Security Header"
                 }
             $setupWhitelist = Read-Host "Do you want to proceed with whitelisting setup for this client? (yes/no)"
             if ($setupWhitelist.ToLower() -eq "yes") {
