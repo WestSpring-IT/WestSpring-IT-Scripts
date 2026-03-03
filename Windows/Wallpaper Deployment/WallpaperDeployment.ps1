@@ -3,7 +3,7 @@
 #       Support: thomassamuel@westspring-it.co.uk
 
 # Add script name here for logging purposes
-$ScriptName = "#ScriptName#"
+$ScriptName = "WallpaperDeployment"
 
 # Function to log messages
 function New-LogMessage {
