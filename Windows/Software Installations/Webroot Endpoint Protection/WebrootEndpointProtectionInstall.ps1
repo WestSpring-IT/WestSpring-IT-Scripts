@@ -47,54 +47,53 @@ function New-LogMessage {
 
 <# Start script logic from here #>
 
-$InstallerDownloadSource = "https://wsprodfileuksouth.blob.core.windows.net/clients/wsasme.msi"
+$InstallerDownloadSource      = "https://wsprodfileuksouth.blob.core.windows.net/clients/wsasme.msi"
 $InstallerDownloadDestination = "C:\Temp"
-$MsiPath = Join-Path $InstallerDownloadDestination "wsasme.msi"
-$LogPath = Join-Path $InstallerDownloadDestination "install.log"
-
-New-LogMessage -Level "INFO" -Message "Starting Webroot Endpoint Protection Installation"
+$MsiPath                      = Join-Path $InstallerDownloadDestination "wsasme.msi"
+$InstallLogPath               = Join-Path $InstallerDownloadDestination "install.log"
 
 try {
+    New-LogMessage -Level INFO -Message "Script started. Beginning Webroot Endpoint Protection installation."
+
+    # Ensure working directory exists (idempotent)
     if (-not (Test-Path -Path $InstallerDownloadDestination)) {
-        # Temp directory doesn't exist, creating now
-        New-LogMessage -Level "INFO" -Message "Creating path $InstallerDownloadDestination"
+        New-LogMessage -Level INFO -Message "Creating destination path: $InstallerDownloadDestination"
         New-Item -Path $InstallerDownloadDestination -ItemType Directory -Force | Out-Null
-        New-LogMessage -Level "SUCCESS" -Message "Created $InstallerDownloadDestination"
-    }
-    else {
-        # Temp directory already exists, logging warning and continuing
-        New-LogMessage -Level "WARN" -Message "Destination $InstallerDownloadDestination already exists"
+        New-LogMessage -Level SUCCESS -Message "Created destination path: $InstallerDownloadDestination"
+    } else {
+        New-LogMessage -Level INFO -Message "Destination path already exists: $InstallerDownloadDestination"
     }
 
-    # Download installer
-    New-LogMessage -Level "INFO" -Message "Downloading installer to $MsiPath"
+    # Download installer (ErrorAction Stop ensures failures are caught)
+    New-LogMessage -Level INFO -Message "Downloading installer to: $MsiPath"
     Invoke-WebRequest -Uri $InstallerDownloadSource -OutFile $MsiPath -UseBasicParsing -ErrorAction Stop
 
+    # Validate download completed as expected
     if (-not (Test-Path -Path $MsiPath)) {
-        # MSI file not found after download, logging error and exiting
-        New-LogMessage -Level "ERROR" -Message "File not found after download: $MsiPath"
-        Exit 1
+        New-LogMessage -Level ERROR -Message "Installer not found after download: $MsiPath"
+        exit 1
     }
 
-    # Install MSI
-    New-LogMessage -Level "INFO" -Message "Installing MSI (logging to $LogPath)"
-    $Args = "/i `"$MsiPath`" GUILIC={[WebrootKeyCode]} CMDLINE=SME,quiet /qn /l*v `"$LogPath`""
+    # Install MSI silently and capture a verbose MSI log for troubleshooting
+    New-LogMessage -Level INFO -Message "Installing MSI (msiexec logging to: $InstallLogPath)"
 
-    # Start the installation process and wait for it to complete
-    $p = Start-Process -FilePath "msiexec.exe" -ArgumentList $Args -Wait -PassThru -NoNewWindow
+    $MsiArguments = "/i `"$MsiPath`" GUILIC={[WebrootKeyCode]} CMDLINE=SME,quiet /qn /l*v `"$InstallLogPath`""
 
-    if ($p.ExitCode -ne 0) {
-        # MSI installation failed, logging error and exiting with the same code
-        New-LogMessage -Level "ERROR" -Message "MSI install failed. ExitCode: $($p.ExitCode). See log: $LogPath"
-        Exit $p.ExitCode
+    # Wait for completion so we can evaluate the msiexec exit code reliably
+    $Process = Start-Process -FilePath "msiexec.exe" -ArgumentList $MsiArguments -Wait -PassThru -NoNewWindow
+    $ExitCode = $Process.ExitCode
+
+    if ($ExitCode -ne 0) {
+        New-LogMessage -Level ERROR -Message "MSI install failed. ExitCode: $ExitCode. See MSI log: $InstallLogPath"
+        exit $ExitCode
+    } else {
+        New-LogMessage -Level SUCCESS -Message "Webroot Endpoint Protection installed successfully."
     }
 
-    # MSI installation succeeded, logging success message and exiting
-    New-LogMessage -Level "SUCCESS" -Message "Webroot Endpoint Protection installed successfully"
-    Exit 0
-}
-catch {
-    # An error occurred during the installation process, logging error message and exiting with code 1
-    New-LogMessage -Level "ERROR" -Message $_.Exception.Message
-    Exit 1
+    New-LogMessage -Level SUCCESS -Message "Script completed successfully."
+    exit 0
+} catch {
+    $ErrorMessage = $_.Exception.Message
+    New-LogMessage -Level ERROR -Message "Script failed. Error: $ErrorMessage"
+    exit 1
 }

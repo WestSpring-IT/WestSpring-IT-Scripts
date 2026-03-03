@@ -52,63 +52,62 @@ $Admins = @(
     @{ Name = "{[ClientLocalAdminUsername]}"; Password = "{[ClientLocalAdminPassword]}" }
 )
 
-New-LogMessage -Level "INFO" -Message "Starting Local Administrator Configuration"
+try {
+    New-LogMessage -Level INFO -Message "Script started. Configuring local administrator accounts."
 
-foreach ($Admin in $Admins) {
-    try {
-        # Convert provided password to a secure string
-        $securePassword = ConvertTo-SecureString $Admin.Password -AsPlainText -Force
+    foreach ($Admin in $Admins) {
 
-        # Check account exists, create if not
-        if (-not (Get-LocalUser -Name $Admin.Name -ErrorAction SilentlyContinue)) {
-            New-LogMessage -Level "INFO" -Message "$($Admin.Name) does not exist"
-            New-LogMessage -Level "INFO" -Message "Creating account $($Admin.Name) with provided password"
-            # Create the local user account
-            $UserParams = @{
-                Name     = $Admin.Name
+        # Convert provided password to SecureString (required by *-LocalUser cmdlets)
+        $SecurePassword = ConvertTo-SecureString $Admin.Password -AsPlainText -Force
+        $AdminName      = $Admin.Name
+
+        # Create account if missing, otherwise align password
+        $ExistingUser = Get-LocalUser -Name $AdminName -ErrorAction SilentlyContinue
+        if (-not $ExistingUser) {
+            New-LogMessage -Level INFO -Message "Account does not exist: $AdminName. Creating now."
+
+            $UserParameters = @{
+                Name     = $AdminName
                 Password = $SecurePassword
             }
-            New-LocalUser @UserParams | Out-Null
-            New-LogMessage -Level "SUCCESS" -Message "Created $($Admin.Name)"
-        }
-        else {
-            # User does exist, align password
-            New-LogMessage -Level "WARN" -Message "Account $($Admin.Name) already exists"
-            New-LogMessage -Level "INFO" -Message "Updating password for $($Admin.Name)"
-            Set-LocalUser -Name $Admin.Name -Password $SecurePassword
-            New-LogMessage -Level "SUCCESS" -Message "Password updated for $($Admin.Name)"
+
+            New-LocalUser @UserParameters | Out-Null
+            New-LogMessage -Level SUCCESS -Message "Created local user: $AdminName"
+        } else {
+            New-LogMessage -Level INFO -Message "Account already exists: $AdminName. Updating password."
+            Set-LocalUser -Name $AdminName -Password $SecurePassword
+            New-LogMessage -Level SUCCESS -Message "Password updated for: $AdminName"
         }
 
-        # Set password to never expire
-        Set-LocalUser -Name $Admin.Name -PasswordNeverExpires $true
-        New-LogMessage -Level "SUCCESS" -Message "Set password never expires for $($Admin.Name)"
+        # Enforce password never expires (service/admin account stability)
+        Set-LocalUser -Name $AdminName -PasswordNeverExpires $true
+        New-LogMessage -Level SUCCESS -Message "Set PasswordNeverExpires for: $AdminName"
 
-        # Add to Administrators only if not already a member
+        # Ensure membership of local Administrators group
         $AdminGroupMembers = Get-LocalGroupMember -Group "Administrators" -ErrorAction SilentlyContinue
-        $AlreadyMember = $false
+        $IsAdministrator   = $false
+
         foreach ($Member in $AdminGroupMembers) {
-            # Name typically like "MACHINE\\wsadmin"; match the tail
-            if ($Member.Name -match "\\$($Admin.Name)$") {
-                $AlreadyMember = $true
-                break 
+            # Member.Name typically looks like "MACHINE\username"; match the username tail
+            if ($Member.Name -match "\\$([regex]::Escape($AdminName))$") {
+                $IsAdministrator = $true
+                break
             }
         }
 
-        if (-not $AlreadyMember) {
-            # Add user to Administrators group
-            New-LogMessage -Level "WARN" -Message "Account $($Admin.Name) is not in Administrators group"
-            Add-LocalGroupMember -Group "Administrators" -Member $Admin.Name
-            New-LogMessage -Level "SUCCESS" -Message "Added $($Admin.Name) to Administrators"
-        }
-        else {
-            # Already a member, no action needed
-            New-LogMessage -Level "INFO" -Message "Account $($Admin.Name) is already in Administrators group"
+        if (-not $IsAdministrator) {
+            New-LogMessage -Level WARN -Message "Account is not in local Administrators group: $AdminName. Adding now."
+            Add-LocalGroupMember -Group "Administrators" -Member $AdminName
+            New-LogMessage -Level SUCCESS -Message "Added to local Administrators group: $AdminName"
+        } else {
+            New-LogMessage -Level INFO -Message "Account already in local Administrators group: $AdminName"
         }
     }
-    catch {
-        New-LogMessage -Level "ERROR" -Message "Failed to configure account $($Admin.Name): $($_.Exception.Message)"
-        # Continue to next admin
-    }
-}
 
-New-LogMessage -Level "INFO" -Message "Local admin account setup completed"
+    New-LogMessage -Level SUCCESS -Message "Script completed successfully. Local administrator configuration complete."
+    exit 0
+} catch {
+    $ErrorMessage = $_.Exception.Message
+    New-LogMessage -Level ERROR -Message "Script failed. Error: $ErrorMessage"
+    exit 1
+}
