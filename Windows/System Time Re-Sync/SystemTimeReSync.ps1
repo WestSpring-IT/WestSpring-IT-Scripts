@@ -50,7 +50,56 @@ function New-LogMessage {
 $NtpServer = "time.windows.com"
 
 try {
-    New-LogMessage -Level INFO -Message "Script started. Configuring Windows Time (w32time) to use manual NTP peer: $NtpServer"
+    New-LogMessage -Level INFO -Message "Script started."
+
+    # Enable "Set time zone automatically" toggle prerequisites
+    try {
+        New-LogMessage -Level INFO -Message "Enabling 'Set time zone automatically' and required Location permission."
+
+        # Enable Auto Time Zone Updater (tzautoupdate)
+        $TzAutoUpdateKey = "HKLM:\SYSTEM\CurrentControlSet\Services\tzautoupdate"
+        if (-not (Test-Path $TzAutoUpdateKey)) {
+            New-LogMessage -Level WARN -Message "tzautoupdate registry key missing. Creating: $TzAutoUpdateKey"
+            New-Item -Path $TzAutoUpdateKey -Force | Out-Null
+        }
+        Set-ItemProperty -Path $TzAutoUpdateKey -Name "Start" -Type DWord -Value 3 -Force
+        New-LogMessage -Level SUCCESS -Message "Set tzautoupdate Start=3 (enabled)."
+
+        # Allow Location capability (needed for automatic time zone determination)
+        $LocationConsentKey = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location"
+        if (-not (Test-Path $LocationConsentKey)) {
+            New-LogMessage -Level WARN -Message "Location consent key missing. Creating: $LocationConsentKey"
+            New-Item -Path $LocationConsentKey -Force | Out-Null
+        }
+        Set-ItemProperty -Path $LocationConsentKey -Name "Value" -Type String -Value "Allow" -Force
+        New-LogMessage -Level SUCCESS -Message "Set Location consent to Allow."
+
+        # Best-effort: start related services (may not exist on all SKUs / images)
+        foreach ($svcName in @("tzautoupdate", "lfsvc")) {
+            try {
+                $svc = Get-Service -Name $svcName -ErrorAction Stop
+
+                if ($svc.StartType -eq "Disabled") {
+                    Set-Service -Name $svcName -StartupType Manual -ErrorAction Stop
+                    New-LogMessage -Level INFO -Message "Set service '$svcName' StartupType to Manual."
+                }
+
+                if ($svc.Status -ne "Running") {
+                    Start-Service -Name $svcName -ErrorAction SilentlyContinue
+                }
+
+                New-LogMessage -Level INFO -Message "Service '$svcName' status: $((Get-Service -Name $svcName).Status)"
+            } catch {
+                New-LogMessage -Level WARN -Message "Could not adjust/start service '$svcName': $($_.Exception.Message)"
+            }
+        }
+
+        New-LogMessage -Level SUCCESS -Message "'Set time zone automatically' prerequisites configured."
+    } catch {
+        New-LogMessage -Level WARN -Message "Failed to enable auto time zone settings (continuing with time resync). Error: $($_.Exception.Message)"
+    }
+
+    New-LogMessage -Level INFO -Message "Configuring Windows Time (w32time) to use manual NTP peer: $NtpServer"
 
     # Configure Windows Time to use a manual NTP peer (w32tm is the supported interface for w32time config)
     & w32tm /config /manualpeerlist:$NtpServer /syncfromflags:manual /reliable:yes /update | Out-Null
@@ -86,6 +135,15 @@ try {
 
     $PeersOutput = (& w32tm /query /peers 2>&1) | Out-String
     New-LogMessage -Level INFO -Message "w32tm /query /peers output:`n$PeersOutput"
+
+    # Optional: log the effective settings we set
+    try {
+        $TzStart = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Services\tzautoupdate" -Name "Start" -ErrorAction Stop).Start
+        $LocVal  = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" -Name "Value" -ErrorAction Stop).Value
+        New-LogMessage -Level INFO -Message "Auto TZ check: tzautoupdate Start=$TzStart; Location consent='$LocVal'"
+    } catch {
+        New-LogMessage -Level WARN -Message "Auto TZ check failed: $($_.Exception.Message)"
+    }
 
     New-LogMessage -Level SUCCESS -Message "Script completed successfully."
     exit 0
