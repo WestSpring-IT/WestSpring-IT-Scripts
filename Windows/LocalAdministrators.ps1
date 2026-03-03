@@ -63,7 +63,7 @@ try {
         $ExistingUser = Get-LocalUser -Name $Admin.Name -ErrorAction SilentlyContinue
         if (-not $ExistingUser) {
             # Account doesn't exist, creating it now
-            New-LogMessage -Level INFO -Message "Account does not exist: $Admin.Name. Creating now."
+            New-LogMessage -Level INFO -Message "Account does not exist: $($Admin.Name). Creating now."
 
             $UserParameters = @{
                 Name = $Admin.Name
@@ -71,17 +71,17 @@ try {
             }
             New-LocalUser @UserParameters | Out-Null
 
-            New-LogMessage -Level SUCCESS -Message "Created local user: $Admin.Name"
+            New-LogMessage -Level SUCCESS -Message "Created local user: $($Admin.Name)"
         } else {
             # Account already exists, aligning password
-            New-LogMessage -Level INFO -Message "Account already exists: $Admin.Name. Updating password."
+            New-LogMessage -Level INFO -Message "Account already exists: $($Admin.Name). Updating password."
             Set-LocalUser -Name $Admin.Name -Password $SecurePassword
-            New-LogMessage -Level SUCCESS -Message "Password updated for: $Admin.Name"
+            New-LogMessage -Level SUCCESS -Message "Password updated for: $($Admin.Name)"
         }
 
         # Enforce password never expires
         Set-LocalUser -Name $Admin.Name -PasswordNeverExpires $true
-        New-LogMessage -Level SUCCESS -Message "Set PasswordNeverExpires for: $Admin.Name"
+        New-LogMessage -Level SUCCESS -Message "Set PasswordNeverExpires for: $($Admin.Name)"
 
         # Checks if user is already in local Administrators group
         $AdminGroupMembers = Get-LocalGroupMember -Group "Administrators" -ErrorAction SilentlyContinue
@@ -97,12 +97,12 @@ try {
 
         if (-not $IsAdministrator) {
             # User is not in Administrators group, adding now
-            New-LogMessage -Level WARN -Message "Account is not in local Administrators group: $Admin.Name. Adding now."
+            New-LogMessage -Level WARN -Message "Account is not in local Administrators group: $($Admin.Name). Adding now."
             Add-LocalGroupMember -Group "Administrators" -Member $Admin.Name
-            New-LogMessage -Level SUCCESS -Message "Added to local Administrators group: $Admin.Name"
+            New-LogMessage -Level SUCCESS -Message "Added to local Administrators group: $($Admin.Name)"
         } else {
             # User is already in Administrators group
-            New-LogMessage -Level INFO -Message "Account already in local Administrators group: $Admin.Name"
+            New-LogMessage -Level INFO -Message "Account already in local Administrators group: $($Admin.Name)"
         }
         # Continue to next admin account
     }
