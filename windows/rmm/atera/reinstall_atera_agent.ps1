@@ -1,1 +1,0 @@
-## Create script to reinstall Atera agent so that intune clients can be re-enrolled

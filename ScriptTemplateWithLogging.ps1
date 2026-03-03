@@ -3,7 +3,7 @@
 #       Support: thomassamuel@westspring-it.co.uk
 
 # Add script name here for logging purposes
-$ScriptName = "LocalAdministrators"
+$ScriptName = "#ScriptName#"
 
 # Function to log messages
 function New-LogMessage {
