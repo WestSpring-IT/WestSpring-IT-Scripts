@@ -2,14 +2,11 @@
 #       Author: Thomas Samuel
 #       Support: thomassamuel@westspring-it.co.uk
 
-# Add script name here for logging purposes
-$ScriptName = "#ScriptName#"
-
 # Function to log messages
 function New-LogMessage {
     param(
         [Parameter()]
-        [ValidateSet("INFO", "ERROR", "SUCCESS", "WARN")]
+        [ValidateSet("SUCCESS", "INFO", "WARN", "ERROR")]
         [string]$Level = "INFO",
 
         [Parameter(Mandatory)]
@@ -22,8 +19,8 @@ function New-LogMessage {
         New-Item -Path "C:\WestSpring IT\LogFiles" -ItemType Directory -Force | Out-Null
     }
 
-    #Get current date and time
-    $LogDay = Get-Date -UFormat %Y-%m-%d
+    # Get current date and time
+    $LogDay = Get-Date -UFormat %d-%m-%Y
     $LogTime = Get-Date -UFormat %T
 
     # Create log entry
@@ -45,5 +42,7 @@ function New-LogMessage {
     }
 }
 
-<# Start script logic from here #>
+# Add script name here for logging purposes (Atera and Intune often overwrite the script name)
+$ScriptName = "#ScriptName#"
 
+<# Start script logic from here #>
