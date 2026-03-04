@@ -51,11 +51,12 @@ try {
     # Collect installed packages once to avoid repeated queries
     $Packages = Get-Package -AllVersions -ErrorAction Stop
 
-    # Remove HP Client Security Manager v10.0.0+ (if present)
+    # Get HP Client Security Manager package
     $HpClientSecurityPackages = $Packages |
         Where-Object { $_.Name -match "HP Client Security Manager" } |
         Where-Object { [version]$_.Version -ge [version]"10.0.0" }
 
+    # Uninstall each package found
     foreach ($Package in $HpClientSecurityPackages) {
         New-LogMessage -Level WARN -Message "Uninstalling package: $($Package.Name) ($($Package.Version))"
         Uninstall-Package -InputObject $Package -Force -ErrorAction Stop
