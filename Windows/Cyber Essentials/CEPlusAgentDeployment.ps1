@@ -91,7 +91,8 @@ $QualysAgentInstallString = Read-Host "Please enter the QualysCloudAgent install
 
 # Connects to Microsoft Graph
 Connect-MgGraph -Scopes "DeviceManagementApps.ReadWrite.All" -NoWelcome -ErrorAction Stop
-Connect-MSIntuneGraph -TenantID (Get-MgOrganization).Id -ClientId e09c9d6c-af10-4113-a1c9-f6edb76cd0e5 -ErrorAction Stop
+Connect-MSIntuneGraph -TenantID (Get-MgOrganization).Id -ClientId e09c9d6c-af10-4113-a1c9-f6edb76cd0e5 -ErrorAction Stop | Out-Null
+New-LogMessage -Level SUCCESS -Message "Connected to Microsoft Graph successfully."
 
 # Checks if Temp directory exists and creates it if not
 Test-TempDirectory
@@ -150,7 +151,7 @@ try {
     $DetectionRule = New-IntuneWin32AppDetectionRuleFile -Path "C:\Program Files\Qualys\QualysAgent" -FileOrFolder "QualysAgent.exe" -DetectionType "exists" -Existence
 
     # Add the app to Intune
-    $Win32App = Add-IntuneWin32App -FilePath $LocalQualysCloudAgentInstallerPath -DisplayName "Qualys Cloud Security Agent" -Description "Qualys Cloud Security Agent" -Publisher "Qualys, Inc." -InstallExperience "system" -RestartBehavior "suppress" -DetectionRule $DetectionRule -RequirementRule $RequirementRule -InstallCommandLine $QualysAgentInstallString -UninstallCommandLine "`"C:\Program Files\Qualys\QualysAgent\Uninstall.exe`" Uninstall=True Force=True"
+    $Win32App = Add-IntuneWin32App -FilePath $LocalQualysCloudAgentInstallerPath -DisplayName "Qualys Cloud Security Agent" -Description "Qualys Cloud Security Agent" -AppVersion "6.3.0.81" -InformationURL "https://www.qualys.com/" -PrivacyURL "https://www.qualys.com/company/privacy#your-ability-to-access-or-delete-personal-information" -Publisher "Qualys, Inc." -InstallExperience "system" -RestartBehavior "suppress" -DetectionRule $DetectionRule -RequirementRule $RequirementRule -InstallCommandLine $QualysAgentInstallString -UninstallCommandLine "`"C:\Program Files\Qualys\QualysAgent\Uninstall.exe`" Uninstall=True Force=True"
     New-LogMessage -Level SUCCESS -Message "QualysCloudAgent added to Intune successfully."
 
     # Add assignment to the app for All Devices with Required install intent
