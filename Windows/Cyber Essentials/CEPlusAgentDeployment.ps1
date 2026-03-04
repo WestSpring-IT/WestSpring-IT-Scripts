@@ -1,38 +1,6 @@
-<#
-.SYNOPSIS
-Deploys Cyber Essentials Plus agents (CybaAgent and QualysCloudAgent) to Microsoft Intune.
-
-.DESCRIPTION
-This script automates the deployment of CybaAgent and QualysCloudAgent to Microsoft Intune as Win32 applications.
-It handles module installation, Microsoft Graph authentication, installer download, and Intune app configuration
-with appropriate detection rules, system requirements, and device assignments.
-
-.NOTES
-- Requires Microsoft.Graph.Authentication and IntuneWin32App PowerShell modules
-- Requires appropriate Microsoft Graph API permissions (DeviceManagementApps.ReadWrite.All)
-- Script name is set to "CEPlusAgentDeployment" for logging purposes
-- All operations are logged to C:\WestSpring IT\LogFiles\{date}-CEPlusAgentDeployment.log
-- Exits with code 1 on any critical failure
-
-.PARAMETER None
-This script uses interactive Read-Host prompts for sensitive inputs:
-- CybaAgent install command line string from CybaOps portal
-- QualysCloudAgent install command line string from CybaOps portal
-
-.OUTPUTS
-Logs to console and file with color-coded severity levels (SUCCESS, INFO, WARN, ERROR)
-Intune Win32 app objects created and assigned to all devices with required intent
-
-.EXAMPLE
-.\CEPlusAgentDeployment.ps1
-
-.FUNCTIONALITY
-- Validates and installs required PowerShell modules
-- Authenticates to Microsoft Graph and Intune
-- Downloads .intunewin package files from Azure Blob Storage
-- Registers agents in Intune with detection and requirement rules
-- Assigns applications to all devices with required installation intent
-#>
+#       Copyright (c) WESTSPRING IT LIMITED
+#       Author: Thomas Samuel
+#       Support: thomassamuel@westspring-it.co.uk
 
 # Function to log messages
 function New-LogMessage {
