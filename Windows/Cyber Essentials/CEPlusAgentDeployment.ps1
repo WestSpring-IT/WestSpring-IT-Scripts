@@ -25,7 +25,7 @@ function New-LogMessage {
 
     # Create log entry
     $LogMessage = @{
-        Path = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
+        Path  = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
         Value = "$LogTime | $Level | $Message"
     }
     Add-Content @LogMessage
@@ -33,11 +33,14 @@ function New-LogMessage {
     # Output log message to console with appropriate color
     if ($Level -eq "ERROR") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Red
-    } elseif ($Level -eq "SUCCESS") {
+    }
+    elseif ($Level -eq "SUCCESS") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Green
-    } elseif ($Level -eq "WARN") {
+    }
+    elseif ($Level -eq "WARN") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Yellow
-    } else {
+    }
+    else {
         Write-Host "$LogTime | $Level | $Message"
     }
 }
@@ -51,7 +54,8 @@ function Test-TempDirectory {
         New-LogMessage -Level INFO -Message "Temp directory does not exist. Creating now."
         New-Item -Path "C:\Temp" -ItemType Directory -Force | Out-Null
         New-LogMessage -Level SUCCESS -Message "Temp directory created successfully."
-    } else {
+    }
+    else {
         New-LogMessage -Level INFO -Message "Temp directory already exists."
     }
 }
@@ -70,12 +74,14 @@ function Check-InstalledModules {
         try {
             Install-Module -Name $Name -Scope CurrentUser -Force -ErrorAction Stop
             New-LogMessage -Level SUCCESS -Message "Module $($Name) installed successfully."
-        } catch {
+        }
+        catch {
             # Failed to install module, log error and exit with code 1
             New-LogMessage -Level ERROR -Message "Failed to install module $($Name). Error: $_"
             exit 1
         }
-    } else {
+    }
+    else {
         # Module is already installed, continue
         New-LogMessage -Level INFO -Message "Module $($Name) is already installed."
     }
@@ -114,7 +120,8 @@ try {
     New-LogMessage -Level INFO -Message "Attempting to download QualysCloudAgent installer."
     Invoke-WebRequest -Uri $QualysCloudAgentInstaller -OutFile "C:\Temp\QualysCloudAgent.intunewin" -UseBasicParsing
     New-LogMessage -Level SUCCESS -Message "QualysCloudAgent installer downloaded successfully."
-} catch {
+}
+catch {
     # Download failed, log error and exit with code 1
     New-LogMessage -Level ERROR -Message "Failed to download one or more installers. Error: $_"
     exit 1
@@ -136,7 +143,8 @@ try {
 
     # Add assignment to the app for All Devices with Required install intent
     Add-IntuneWin32AppAssignmentAllDevices -ID $Win32App.id -Intent "required" -Notification "hideAll" | Out-Null
-} catch {
+}
+catch {
     # Failed to add CybaAgent to Intune, log error and exit with code 1
     New-LogMessage -Level ERROR -Message "Failed to add CybaAgent to Intune. Error: $_"
     exit 1
@@ -158,7 +166,8 @@ try {
 
     # Add assignment to the app for All Devices with Required install intent
     Add-IntuneWin32AppAssignmentAllDevices -ID $Win32App.id -Intent "required" -Notification "hideAll" | Out-Null
-} catch {
+}
+catch {
     # Failed to add QualysCloudAgent to Intune, log error and exit with code 1
     New-LogMessage -Level ERROR -Message "Failed to add QualysCloudAgent to Intune. Error: $_"
     exit 1

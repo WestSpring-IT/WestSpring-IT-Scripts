@@ -25,7 +25,7 @@ function New-LogMessage {
 
     # Create log entry
     $LogMessage = @{
-        Path = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
+        Path  = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
         Value = "$LogTime | $Level | $Message"
     }
     Add-Content @LogMessage
@@ -33,11 +33,14 @@ function New-LogMessage {
     # Output log message to console with appropriate color
     if ($Level -eq "ERROR") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Red
-    } elseif ($Level -eq "SUCCESS") {
+    }
+    elseif ($Level -eq "SUCCESS") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Green
-    } elseif ($Level -eq "WARN") {
+    }
+    elseif ($Level -eq "WARN") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Yellow
-    } else {
+    }
+    else {
         Write-Host "$LogTime | $Level | $Message"
     }
 }
@@ -60,6 +63,7 @@ New-LogMessage -Level INFO -Message "New computer name will be $($NewComputerNam
 try {
     Rename-Computer -NewName $NewComputerName -ErrorAction Stop
     New-LogMessage -Level SUCCESS -Message "Computer renamed to $($NewComputerName) successfully. Please restart the device to apply changes."
-} catch {
+}
+catch {
     New-LogMessage -Level ERROR -Message "Failed to rename computer: $_"
 }

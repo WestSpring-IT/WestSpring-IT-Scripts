@@ -25,7 +25,7 @@ function New-LogMessage {
 
     # Create log entry
     $LogMessage = @{
-        Path = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
+        Path  = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
         Value = "$LogTime | $Level | $Message"
     }
     Add-Content @LogMessage
@@ -33,11 +33,14 @@ function New-LogMessage {
     # Output log message to console with appropriate color
     if ($Level -eq "ERROR") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Red
-    } elseif ($Level -eq "SUCCESS") {
+    }
+    elseif ($Level -eq "SUCCESS") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Green
-    } elseif ($Level -eq "WARN") {
+    }
+    elseif ($Level -eq "WARN") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Yellow
-    } else {
+    }
+    else {
         Write-Host "$LogTime | $Level | $Message"
     }
 }
@@ -66,13 +69,14 @@ try {
             New-LogMessage -Level INFO -Message "Account does not exist: $($Admin.Name). Creating now."
 
             $UserParameters = @{
-                Name = $Admin.Name
+                Name     = $Admin.Name
                 Password = $SecurePassword
             }
             New-LocalUser @UserParameters | Out-Null
 
             New-LogMessage -Level SUCCESS -Message "Created local user: $($Admin.Name)"
-        } else {
+        }
+        else {
             # Account already exists, aligning password
             New-LogMessage -Level INFO -Message "Account already exists: $($Admin.Name). Updating password."
             Set-LocalUser -Name $Admin.Name -Password $SecurePassword
@@ -100,7 +104,8 @@ try {
             New-LogMessage -Level WARN -Message "Account is not in local Administrators group: $($Admin.Name). Adding now."
             Add-LocalGroupMember -Group "Administrators" -Member $Admin.Name
             New-LogMessage -Level SUCCESS -Message "Added to local Administrators group: $($Admin.Name)"
-        } else {
+        }
+        else {
             # User is already in Administrators group
             New-LogMessage -Level INFO -Message "Account already in local Administrators group: $($Admin.Name)"
         }
@@ -109,7 +114,8 @@ try {
 
     New-LogMessage -Level SUCCESS -Message "Script completed successfully. Local administrator configuration complete."
     exit 0
-} catch {
+}
+catch {
     $ErrorMessage = $_.Exception.Message
     New-LogMessage -Level ERROR -Message "Script failed. Error: $ErrorMessage"
     exit 1

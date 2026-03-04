@@ -25,7 +25,7 @@ function New-LogMessage {
 
     # Create log entry
     $LogMessage = @{
-        Path = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
+        Path  = "C:\WestSpring IT\LogFiles\$($LogDay)-$($ScriptName).log"
         Value = "$LogTime | $Level | $Message"
     }
     Add-Content @LogMessage
@@ -33,11 +33,14 @@ function New-LogMessage {
     # Output log message to console with appropriate color
     if ($Level -eq "ERROR") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Red
-    } elseif ($Level -eq "SUCCESS") {
+    }
+    elseif ($Level -eq "SUCCESS") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Green
-    } elseif ($Level -eq "WARN") {
+    }
+    elseif ($Level -eq "WARN") {
         Write-Host "$LogTime | $Level | $Message" -ForegroundColor Yellow
-    } else {
+    }
+    else {
         Write-Host "$LogTime | $Level | $Message"
     }
 }
@@ -53,8 +56,8 @@ try {
 
     # Get HP Client Security Manager package
     $HpClientSecurityPackages = $Packages |
-        Where-Object { $_.Name -match "HP Client Security Manager" } |
-        Where-Object { [version]$_.Version -ge [version]"10.0.0" }
+    Where-Object { $_.Name -match "HP Client Security Manager" } |
+    Where-Object { [version]$_.Version -ge [version]"10.0.0" }
 
     # Uninstall each package found
     foreach ($Package in $HpClientSecurityPackages) {
@@ -87,7 +90,8 @@ try {
 
     New-LogMessage -Level SUCCESS -Message "Script completed successfully. HP security packages removal complete."
     exit 0
-} catch {
+}
+catch {
     $ErrorMessage = $_.Exception.Message
     New-LogMessage -Level ERROR -Message "Script failed. Error: $ErrorMessage"
     exit 1
