@@ -1,4 +1,3 @@
-
 ![WESTSPRING IT LIMITED Logo](https://wsprodfileuksouth.blob.core.windows.net/intune-content/company-logo.svg)
 
 This repository contains a collection of useful scripts for managing Microsoft environments at enterprise scale. 
