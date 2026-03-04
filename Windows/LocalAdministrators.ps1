@@ -1,6 +1,40 @@
-#       Copyright © WESTSPRING IT LIMITED
-#       Author: Thomas Samuel
-#       Support: thomassamuel@westspring-it.co.uk
+<#
+.SYNOPSIS
+Configures local administrator accounts on a Windows system.
+
+.DESCRIPTION
+This script is designed to be deployed via Atera and manages local administrator accounts by creating new accounts, updating passwords, and ensuring they are members of the local Administrators group. It uses Atera variables for account credentials and logs all operations to a log file.
+
+.PARAMETER None
+This script does not accept parameters. Configuration is defined within the script using the $Admins array.
+
+.NOTES
+- The script requires administrative privileges to execute successfully.
+- Atera and Intune may overwrite the script name, so the $ScriptName variable is explicitly defined as "LocalAdministrators".
+- Credentials are passed as plaintext variables from Atera deployment and converted to SecureString objects.
+- Log files are created in "C:\WestSpring IT\LogFiles\" with the filename format: "DD-MM-YYYY-LocalAdministrators.log"
+- Passwords for created accounts are set to never expire.
+- The script uses color-coded console output: Red for errors, Green for success, Yellow for warnings.
+
+.EXAMPLE
+.\LocalAdministrators.ps1
+
+This example runs the script to configure local administrator accounts as defined in the $Admins array.
+
+.FUNCTIONALITY
+1. Creates or updates local user accounts specified in the $Admins array.
+2. Sets account passwords to never expire.
+3. Adds accounts to the local Administrators group if not already present.
+4. Logs all operations (creation, updates, group membership) to a dated log file.
+5. Returns exit code 0 on success or exit code 1 on failure.
+
+.AUTHOR
+Thomas Samuel
+WESTSPRING IT LIMITED
+
+.LASTMODIFIED
+03/03/2026
+#>
 
 # Function to log messages
 function New-LogMessage {
