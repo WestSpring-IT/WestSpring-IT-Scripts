@@ -91,8 +91,10 @@ $QualysAgentInstallString = Read-Host "Please enter the QualysCloudAgent install
 
 # Connects to Microsoft Graph
 Connect-MgGraph -Scopes "DeviceManagementApps.ReadWrite.All" -NoWelcome -ErrorAction Stop
-Connect-MSIntuneGraph -TenantID (Get-MgOrganization).Id -ClientId e09c9d6c-af10-4113-a1c9-f6edb76cd0e5 -ErrorAction Stop | Out-Null
-New-LogMessage -Level SUCCESS -Message "Connected to Microsoft Graph successfully."
+$Organization = Get-MgOrganization
+$Context = Get-MgContext
+Connect-MSIntuneGraph -TenantID $Organization.Id -ClientId e09c9d6c-af10-4113-a1c9-f6edb76cd0e5 -ErrorAction Stop | Out-Null
+New-LogMessage -Level INFO -Message "Connected to tenant $($Organization.DisplayName) as $($Context.Account)"
 
 # Checks if Temp directory exists and creates it if not
 Test-TempDirectory
