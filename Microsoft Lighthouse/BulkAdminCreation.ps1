@@ -46,7 +46,7 @@ function New-LogMessage {
 }
 
 # Add script name here for logging purposes (Atera and Intune often overwrite the script name)
-$ScriptName = "#ScriptName#"
+$ScriptName = "BulkAdminCreation"
 
 function Check-InstalledModules {
     param(
