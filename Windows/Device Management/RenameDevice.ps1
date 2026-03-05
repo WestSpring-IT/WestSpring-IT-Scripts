@@ -61,7 +61,7 @@ New-LogMessage -Level INFO -Message "New computer name will be $($NewComputerNam
 
 # Rename the computer without forcing a restart
 try {
-    Rename-Computer -NewName $NewComputerName -ErrorAction Stop
+    Rename-Computer -NewName $NewComputerName -Force -ErrorAction Stop
     New-LogMessage -Level SUCCESS -Message "Computer renamed to $($NewComputerName) successfully. Please restart the device to apply changes."
 }
 catch {
