@@ -49,105 +49,59 @@ function New-LogMessage {
 # Log the start of the script execution
 New-LogMessage -Level "START" -Message "Starting $Script:ScriptName script execution."
 
-# Ensure the temporary directory exists before proceeding with any operations
-New-Item -Path "C:\WestSpring IT\DOTNET" -ItemType Directory -Force -ErrorAction Stop | Out-Null
-New-LogMessage -Level "INFO" -Message "Ensured temporary directory 'C:\WestSpring IT\DOTNET' exists."
-
-# Check if the windowsdesktop-runtime-win-x64.exe script already exists before attempting to download it
+# Upgrade Chocolatey if installed, install if not installed, and log the outcome
 try {
-    if (-not (Test-Path -Path "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.exe")) {
-        New-LogMessage -Level "INFO" -Message "Downloading .NET installer."
-        Invoke-WebRequest -Uri "https://aka.ms/dotnet/LTS/windowsdesktop-runtime-win-x64.exe" -OutFile "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.exe" -UseBasicParsing -ErrorAction Stop
-        New-LogMessage -Level "SUCCESS" -Message "Successfully downloaded .NET installer."
+    if (Get-Command choco -ErrorAction SilentlyContinue) {
+        New-LogMessage -Level "INFO" -Message "Chocolatey is already installed. Attempting to upgrade Chocolatey."
+        choco upgrade chocolatey -y --no-progress | Out-Null
+        New-LogMessage -Level "SUCCESS" -Message "Successfully upgraded Chocolatey."
     }
     else {
-        New-LogMessage -Level "INFO" -Message "windowsdesktop-runtime-win-x64.exe already exists. Skipping download."
-    }
-
-    # Additional check to ensure the downloaded file exists at the expected location
-    if (-not (Test-Path -Path "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.exe")) {
-        New-LogMessage -Level "ERROR" -Message "Downloaded .NET installer file not found at expected location."
-
-        # Attempt to download the file again and save it with a temporary name (WatchGuard commonly blocks MSI downloads, so this is a workaround to bypass that issue)
-        try {
-            Invoke-WebRequest -Uri "https://aka.ms/dotnet/LTS/windowsdesktop-runtime-win-x64.exe" -OutFile "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.txt" -UseBasicParsing -ErrorAction Stop
-            New-LogMessage -Level "ERROR" -Message "Downloaded .NET installer content saved to temporary.txt file."
-
-            # Rename the temporary file to the correct .exe extension
-            Rename-Item -Path "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.txt" -NewName "windowsdesktop-runtime-win-x64.exe" -ErrorAction Stop
-            New-LogMessage -Level "ERROR" -Message "Renamed temporary.txt to windowsdesktop-runtime-win-x64.exe."
-        }
-        catch {
-            New-LogMessage -Level "ERROR" -Message "Failed to download .NET installer on second attempt: $($_.Exception.Message)"
-            exit 1
-        }
+        New-LogMessage -Level "INFO" -Message "Chocolatey is not installed. Attempting to install Chocolatey."
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        Invoke-Expression (Invoke-WebRequest -Uri "https://chocolatey.org/install.ps1" -UseBasicParsing).Content
+        New-LogMessage -Level "SUCCESS" -Message "Successfully installed Chocolatey."
     }
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to download .NET installer: $($_.Exception.Message)"
+    New-LogMessage -Level "ERROR" -Message "An error occurred while installing or upgrading Chocolatey: $($_.Exception.Message)"
+    New-LogMessage -Level "END" -Message "Completed $Script:ScriptName script execution."
     exit 1
 }
 
-# Check if the dotnet-core-uninstall.msi script already exists before attempting to download it
+# Install .NET uninstall tool using Chocolatey and log the outcome
 try {
-    if (-not (Test-Path -Path "C:\WestSpring IT\DOTNET\dotnet-core-uninstall.msi")) {
-        New-LogMessage -Level "INFO" -Message "Downloading .NET uninstaller."
-        Invoke-WebRequest -Uri "https://github.com/dotnet/cli-lab/releases/download/1.7.661902/dotnet-core-uninstall.msi" -OutFile "C:\WestSpring IT\DOTNET\dotnet-core-uninstall.msi" -UseBasicParsing -ErrorAction Stop
-        New-LogMessage -Level "SUCCESS" -Message "Successfully downloaded .NET uninstaller."
-        # Additional check to ensure the downloaded file exists at the expected location
-        if (-not (Test-Path -Path "C:\WestSpring IT\DOTNET\dotnet-core-uninstall.msi")) {
-            New-LogMessage -Level "ERROR" -Message "Downloaded .NET uninstaller file not found at expected location."
-
-            # Attempt to download the file again and save it with a temporary name (WatchGuard commonly blocks MSI downloads, so this is a workaround to bypass that issue)
-            try {
-                Invoke-WebRequest -Uri "https://github.com/dotnet/cli-lab/releases/download/1.7.661902/dotnet-core-uninstall.msi" -OutFile "C:\WestSpring IT\DOTNET\dotnet-core-uninstall.txt" -UseBasicParsing -ErrorAction Stop
-                New-LogMessage -Level "ERROR" -Message "Downloaded .NET uninstaller content saved to temporary.txt file."
-            
-                # Rename the temporary file to the correct .exe extension
-                Rename-Item -Path "C:\WestSpring IT\DOTNET\dotnet-core-uninstall.txt" -NewName "dotnet-core-uninstall.msi" -ErrorAction Stop
-                New-LogMessage -Level "ERROR" -Message "Renamed temporary.txt to dotnet-core-uninstall.msi."
-            }
-            catch {
-                New-LogMessage -Level "ERROR" -Message "Failed to download .NET uninstaller on second attempt: $($_.Exception.Message)"
-                exit 1
-            }
-        }
-    }
-    else {
-        New-LogMessage -Level "INFO" -Message "dotnet-core-uninstall.msi already exists. Skipping download."
-    } 
+    New-LogMessage -Level "INFO" -Message "Attempting to install the .NET uninstall tool using Chocolatey."
+    choco install dotnet-uninstaller -y --no-progress --force | Out-Null
+    New-LogMessage -Level "SUCCESS" -Message "Successfully installed the .NET uninstall tool."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to download .NET uninstaller: $($_.Exception.Message)"
+    New-LogMessage -Level "ERROR" -Message "An error occurred while installing the .NET uninstall tool: $($_.Exception.Message)"
+    New-LogMessage -Level "END" -Message "Completed $Script:ScriptName script execution."
     exit 1
 }
 
-# Install the .NET uninstaller
+# Attempt to cleanup all .NET SDKs and runtimes using the installed uninstall tool and log the outcome
 try {
-    New-LogMessage -Level "INFO" -Message "Installing .NET uninstaller."
-    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"C:\WestSpring IT\DOTNET\dotnet-core-uninstall.msi`" /qn" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully installed .NET uninstaller."
+    New-LogMessage -Level "INFO" -Message "Attempting to uninstall all .NET SDK versions."
+    Start-Process -FilePath "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall.exe" -ArgumentList "remove --all --sdk --force --yes" -Wait -ErrorAction Stop
+    New-LogMessage -Level "SUCCESS" -Message "Successfully cleaned up all .NET SDK versions."
+    New-LogMessage -Level "INFO" -Message "Attempting to uninstall all .NET runtime versions."
+    Start-Process -FilePath "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall.exe" -ArgumentList "remove --all --runtime --force --yes" -Wait -ErrorAction Stop
+    New-LogMessage -Level "SUCCESS" -Message "Successfully cleaned up all .NET runtime versions."
+    New-LogMessage -Level "INFO" -Message "Attempting to uninstall all .NET desktop runtime versions."
+    Start-Process -FilePath "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall.exe" -ArgumentList "remove --all --windows-desktop-runtime --force --yes" -Wait -ErrorAction Stop
+    New-LogMessage -Level "SUCCESS" -Message "Successfully cleaned up all .NET desktop runtime versions."
+    New-LogMessage -Level "INFO" -Message "Attempting to uninstall all ASP.NET versions."
+    Start-Process -FilePath "C:\Program Files (x86)\dotnet-core-uninstall\dotnet-core-uninstall.exe" -ArgumentList "remove --all --aspnet-runtime --force --yes" -Wait -ErrorAction Stop
+    New-LogMessage -Level "SUCCESS" -Message "Successfully cleaned up all ASP.NET versions."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to install .NET uninstaller: $($_.Exception.Message)"
-    exit 1
+    # If an error occurs during the cleanup process, log the error message but continue with the script execution
+    New-LogMessage -Level "ERROR" -Message "An error occurred while cleaning up .NET SDKs and runtimes: $($_.Exception.Message)"
 }
 
-# Uninstall all .NET versions using the uninstaller tool
-try {
-    Start-Process "cmd.exe" -ArgumentList "/c", "dotnet-core-uninstall", "remove --sdk --all --force --yes" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully uninstalled all .NET SDK versions."
-    Start-Process "cmd.exe" -ArgumentList "/c", "dotnet-core-uninstall", "remove --runtime --all --force --yes" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully uninstalled all .NET runtime versions."
-    Start-Process "cmd.exe" -ArgumentList "/c", "dotnet-core-uninstall", "remove --aspnet-runtime --all --force --yes" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully uninstalled all .NET ASP.NET runtime versions."
-}
-catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to uninstall .NET versions: $($_.Exception.Message)"
-    exit 1
-}
-
-# Remove any remaining .NET SDKs and runtimes from the system
+# Attempt to remove any remaining .NET SDKs and runtimes that may not have been removed by the uninstall tool and log the outcome
 try {
     Get-ChildItem "C:\Program Files\dotnet\shared\Microsoft.NETCore.App" -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
     Get-ChildItem "C:\Program Files\dotnet\shared\Microsoft.WindowsDesktop.App" -Directory -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
@@ -158,38 +112,42 @@ try {
     New-LogMessage -Level "SUCCESS" -Message "Successfully removed remaining .NET SDKs and runtimes."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to remove remaining .NET SDKs and runtimes: $($_.Exception.Message)"
+    New-LogMessage -Level "WARN" -Message "Failed to remove remaining .NET SDKs and runtimes: $($_.Exception.Message)"
 }
 
-# Install the latest .NET SDK
+# Cleanup .NET bundles within Chocolatey, allows it to re-install
 try {
-    New-LogMessage -Level "INFO" -Message "Installing .NET SDK."
-    Start-Process -FilePath "C:\WestSpring IT\DOTNET\windowsdesktop-runtime-win-x64.exe" -ArgumentList "/install", "/quiet", "/norestart" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully installed .NET SDK."
+    New-LogMessage -Level "INFO" -Message "Attempting to remove any pre-existing .NET bundles within Chocolatey."
+    Get-ChildItem "C:\ProgramData\chocolatey\lib" -Directory -Filter "dotnet*" -ErrorAction SilentlyContinue | Where-Object { $_.Name -ne "dotnet-uninstaller" } | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    New-LogMessage -Level "SUCCESS" -Message "Successfully removed pre-existing .NET bundles within Chocolatey."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to install .NET SDK: $($_.Exception.Message)"
+    New-LogMessage -Level "WARN" -Message "Failed to remove pre-existing .NET bundles within Chocolatey: $($_.Exception.Message)"
+    New-LogMessage -Level "ERROR" -Message "Completed $Script:ScriptName script execution."
     exit 1
 }
 
-# Uninstall the .NET uninstaller
+# Attempt to re-install latest .NET SDK and runtime versions using Chocolatey and log the outcome
 try {
-    New-LogMessage -Level "INFO" -Message "Uninstalling .NET uninstaller."
-    Start-Process -FilePath "msiexec.exe" -ArgumentList "/x `"C:\WestSpring IT\DOTNET\dotnet-core-uninstall.msi`" /qn" -Wait -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully uninstalled .NET uninstaller."
+    New-LogMessage -Level "INFO" -Message "Attempting to install the latest .NET SDK version using Chocolatey."
+    choco install dotnet-sdk -y --no-progress --force | Out-Null
+    New-LogMessage -Level "SUCCESS" -Message "Successfully installed the latest .NET SDK version."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to uninstall .NET uninstaller: $($_.Exception.Message)"
+    New-LogMessage -Level "ERROR" -Message "An error occurred while installing the latest .NET SDK and runtime versions: $($_.Exception.Message)"
+    New-LogMessage -Level "END" -Message "Completed $Script:ScriptName script execution."
     exit 1
 }
 
-# Clean up the temporary directory and its contents
+# Uninstall .NET uninstall tool and log the outcome
 try {
-    Remove-Item -Path "C:\WestSpring IT\DOTNET" -Recurse -Force -ErrorAction Stop
-    New-LogMessage -Level "SUCCESS" -Message "Successfully cleaned up temporary files."
+    New-LogMessage -Level "INFO" -Message "Attempting to uninstall the .NET uninstall tool using Chocolatey."
+    choco uninstall dotnet-uninstaller -y --no-progress --force | Out-Null
+    New-LogMessage -Level "SUCCESS" -Message "Successfully uninstalled the .NET uninstall tool."
 }
 catch {
-    New-LogMessage -Level "ERROR" -Message "Failed to clean up temporary files: $($_.Exception.Message)"
+    # If an error occurs during the uninstallation process, log the error message but continue with the script execution
+    New-LogMessage -Level "WARN" -Message "An error occurred while uninstalling the .NET uninstall tool: $($_.Exception.Message)"
 }
 
 # Log the successful completion of the script execution
