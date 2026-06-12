@@ -59,7 +59,7 @@ try {
     else {
         New-LogMessage -Level "INFO" -Message "Chocolatey is not installed. Attempting to install Chocolatey."
         Set-ExecutionPolicy Bypass -Scope Process -Force
-        Invoke-Expression (Invoke-WebRequest -Uri "https://chocolatey.org/install.ps1" -UseBasicParsing).Content
+        Invoke-Expression (Invoke-WebRequest -Uri "https://community.chocolatey.org/install.ps1" -UseBasicParsing).Content
         New-LogMessage -Level "SUCCESS" -Message "Successfully installed Chocolatey."
     }
 }
