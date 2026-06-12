@@ -57,9 +57,18 @@ try {
         New-LogMessage -Level "SUCCESS" -Message "Successfully upgraded Chocolatey."
     }
     else {
+        if (Test-Path -Path "C:\ProgramData\chocolatey") {
+            if (-not(Test-Path -Path "C:\ProgramData\chocolatey\bin\choco.exe")) {
+                # If the Chocolatey executable is not found, it indicates a broken installation. Attempt to remove the existing installation before proceeding with a fresh install.
+                New-LogMessage -Level "WARN" -Message "Chocolatey installation directory exists but Chocolatey is not found in the system path. This may indicate a broken installation."
+                New-LogMessage -Level "INFO" -Message "Attempting to remove broken Chocolatey installation."
+                Remove-Item -Recurse -Force "C:\ProgramData\chocolatey" -ErrorAction SilentlyContinue
+                New-LogMessage -Level "SUCCESS" -Message "Successfully removed broken Chocolatey installation."
+            }
+        }
         New-LogMessage -Level "INFO" -Message "Chocolatey is not installed. Attempting to install Chocolatey."
         Set-ExecutionPolicy Bypass -Scope Process -Force
-        Invoke-Expression (Invoke-WebRequest -Uri "https://community.chocolatey.org/install.ps1" -UseBasicParsing).Content
+        Invoke-Expression (Invoke-WebRequest -Uri "https://community.chocolatey.org/install.ps1" -UseBasicParsing).Content | Out-Null
         New-LogMessage -Level "SUCCESS" -Message "Successfully installed Chocolatey."
     }
 }
